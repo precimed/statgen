@@ -106,6 +106,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import pathlib
+          import re
           import tomllib
           from packaging.version import Version
 
@@ -115,25 +116,28 @@ jobs:
           pyproject_path = pathlib.Path("python/pyproject.toml")
           pyproject_text = pyproject_path.read_text(encoding="utf-8")
           current_version = tomllib.loads(pyproject_text)["project"]["version"]
-          updated_pyproject_text = pyproject_text.replace(
-              f'version = "{current_version}"',
-              f'version = "{manual_version}"',
-              1,
-          )
-          if updated_pyproject_text == pyproject_text:
-              raise SystemExit("failed to update python/pyproject.toml version")
-          pyproject_path.write_text(updated_pyproject_text, encoding="utf-8")
+          if manual_version != current_version:
+              updated_pyproject_text, n_py = re.subn(
+                  r'(?m)^version\s*=\s*"[^"]+"',
+                  f'version = "{manual_version}"',
+                  pyproject_text,
+                  count=1,
+              )
+              if n_py != 1:
+                  raise SystemExit("failed to update python/pyproject.toml version")
+              pyproject_path.write_text(updated_pyproject_text, encoding="utf-8")
 
-          version_path = pathlib.Path("python/statgen/__init__.py")
-          version_text = version_path.read_text(encoding="utf-8")
-          updated_version_text = version_text.replace(
-              f'__version__ = "{current_version}"',
-              f'__version__ = "{manual_version}"',
-              1,
-          )
-          if updated_version_text == version_text:
-              raise SystemExit("failed to update python/statgen/__init__.py version")
-          version_path.write_text(updated_version_text, encoding="utf-8")
+              version_path = pathlib.Path("python/statgen/__init__.py")
+              version_text = version_path.read_text(encoding="utf-8")
+              updated_version_text, n_ver = re.subn(
+                  r'(?m)^__version__\s*=\s*"[^"]+"',
+                  f'__version__ = "{manual_version}"',
+                  version_text,
+                  count=1,
+              )
+              if n_ver != 1:
+                  raise SystemExit("failed to update python/statgen/__init__.py version")
+              version_path.write_text(updated_version_text, encoding="utf-8")
           PY
 
       - name: Build wheel and sdist
