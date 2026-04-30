@@ -67,6 +67,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Octave
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends octave
+
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -92,7 +98,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: python -m pip install --upgrade pip build twine packaging
+        run: python -m pip install --upgrade pip build twine packaging setuptools wheel
 
       - name: Override package version for manual TestPyPI publish
         if: github.event_name == 'workflow_dispatch' && inputs.testpypi_release_label != ''
