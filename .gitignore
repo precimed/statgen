@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Pytest
+.pytest_cache/
+.coverage
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# MATLAB/Octave
+*.asv
+octave-workspace
+
+# Claude Code
+.claude/

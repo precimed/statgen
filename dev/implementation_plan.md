@@ -16,15 +16,22 @@ used by every later phase.
 
 Implementation tasks:
 
-- create `python/statgen/` with package metadata and module boundaries
-  for `reference`, `sumstats`, `annotations`, `ld`, `genotype`, and shared
-  utilities;
-- create `matlab/` with one public entry point per object family;
-- create `script/` for command-line tools, starting with placeholders
-  for LD conversion/build tooling;
-- create `tests/` with pytest configuration and helpers for invoking
-  Octave when available;
-- generate tiny portable fixtures under `tests/fixtures/`:
+- create `python/pyproject.toml` and `python/statgen/` with empty module stubs
+  for `reference`, `sumstats`, `annotations`, `ld`, `genotype`, and `_utils`;
+  package is installable via `pip install -e python/` from the repo root;
+- create `matlab/+statgen/` package with a minimal `version.m` function as the
+  first callable entry point, plus the corresponding `statgen_version.m` flat
+  wrapper using the `max(nargout, 1)` varargout pattern; no other stubs needed
+  yet;
+- create `script/` with placeholder scripts for LD conversion/build tooling;
+- create `tests/conftest.py` with:
+  - a session-scoped `octave_available` fixture that probes `shutil.which("octave")`;
+  - a `pytest.mark.octave` marker (registered in `pyproject.toml`);
+  - a `skipif_no_octave` skip decorator;
+- create `tests/fixtures/generate.py`: standalone script that writes all
+  committed fixture files deterministically using explicit little-endian dtypes;
+  run with `python tests/fixtures/generate.py` to regenerate;
+- generate and commit fixtures under `tests/fixtures/`:
   - one autosome and chrX;
   - sharded `.bim` files and one non-sharded `.bim`;
   - inputs using genomatch NCBI contig naming;
@@ -38,10 +45,12 @@ Implementation tasks:
 
 Tests and acceptance criteria:
 
-- pytest can run without Octave and skip Octave-specific tests cleanly;
-- fixture-generation is deterministic and documented;
-- CI/local test commands are documented in `README.md` or a test README;
-- no package loader depends on a project-level dataset bundle root.
+- pytest runs without Octave and skips `@pytest.mark.octave` tests cleanly;
+- at least one `@pytest.mark.octave` smoke test: invoke `statgen.version()` via
+  subprocess, verify the returned value matches the expected string;
+- fixture-generation script is deterministic and its output is committed;
+- `Makefile` with three thin targets: `install`, `fixtures`, `test`;
+- CI/local test commands are documented in `README.md`.
 
 ## Phase 1: shared conventions and reference panels
 

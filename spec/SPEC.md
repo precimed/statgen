@@ -128,6 +128,8 @@ API.
    `AnnotationPanel`, and BED-to-BIM painting.
 6. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
 7. [testing.md](testing.md): pytest and Octave consistency strategy.
+8. [python.md](python.md): Python package layout and implementation conventions.
+9. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
 
 ## Optional collection manifests
 

@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+pythonpath = [".", "python"]
+markers = [
+    "octave: tests that require Octave to be installed",
+]

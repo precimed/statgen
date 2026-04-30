@@ -1,0 +1,10 @@
+{
+  "object_type": "ld_shard_group",
+  "schema_version": "0.1",
+  "chr": "X",
+  "sex_shards": [
+    "combined",
+    "male",
+    "female"
+  ]
+}

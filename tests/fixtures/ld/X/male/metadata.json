@@ -1,0 +1,19 @@
+{
+  "object_type": "ld_shard",
+  "schema_version": "0.1",
+  "chr": "X",
+  "sex": "male",
+  "num_snp": 3,
+  "num_ld": 2,
+  "index_base": 0,
+  "byte_order": "little_endian",
+  "triangle": "upper",
+  "diagonal": "implicit_unit",
+  "value": "r",
+  "reference_checksum": "f7ce56a624f7994ed297cb0cd10ae39b",
+  "build_tool": "generate.py",
+  "build_command": "synthetic fixture",
+  "ld_window_kb": 10000,
+  "ld_r2_threshold": 0.05,
+  "num_sample": 100
+}

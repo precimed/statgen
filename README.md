@@ -52,3 +52,25 @@ script
 tests
 spec
 ```
+
+## Development setup
+
+Create and activate the conda environment (once):
+
+```sh
+conda create -n statgen python=3.11 numpy scipy pytest -y
+conda activate statgen
+pip install -e python/
+```
+
+Run the full test suite (Octave tests are skipped automatically if Octave is not installed):
+
+```sh
+make test
+```
+
+Regenerate committed test fixtures after a format change:
+
+```sh
+make fixtures
+```
