@@ -4,21 +4,17 @@
 
 A reference panel is a genome-wide table of SNP positions and alleles that
 defines the coordinate system for all other objects. Each SNP is described by
-chromosome, base-pair position, identifier, genetic position, and an ordered
-allele pair under the input contract in [conventions.md](conventions.md):
+chromosome, base-pair position, identifier, and an ordered allele pair under
+the input contract in [conventions.md](conventions.md):
 
 - `chr`: upstream contig label, expected to use the selected `genomatch`
   contig naming mode, normally NCBI labels such as `1`-`22` and `X`;
 - `snp`: SNP identifier;
-- `cm`: genetic position, retained for BIM compatibility;
 - `bp`: base-pair position;
 - `a1`, `a2`: ordered alleles; `a1` is the non-reference allele, `a2` is the
   reference allele.
 
 Optional columns include `source` and `variant_id`.
-
-The `cm` column is loaded and retained in shard metadata for BIM compatibility,
-but it is not part of the standard panel-level accessor API.
 
 ## Disk representation
 
@@ -27,6 +23,9 @@ Canonical disk representation is PLINK-style `.bim`:
 ```text
 chr  snp  cm  bp  a1  a2
 ```
+
+Per [conventions.md](conventions.md), `cm` is validated as part of BIM schema
+compatibility and then ignored by `statgen`.
 
 A reference panel may be sharded or non-sharded on disk:
 
@@ -71,7 +70,7 @@ ReferencePanel.bp  -> num_snp integer vector
 ReferencePanel.a1  -> num_snp string vector
 ReferencePanel.a2  -> num_snp string vector
 ReferencePanel.shard_offsets -> table with shard_label, start0, stop0
-ReferencePanel.is_object_compatible(object, optional strict) -> bool
+ReferencePanel.is_object_compatible(object) -> bool
 ```
 
 Expected behavior:
@@ -85,6 +84,10 @@ Expected behavior:
 - If `path` is a single file and `no_shard=True`: load as a single shard
   spanning all chromosomes, with shard label `"all"`.
 - Preserve row order and validate required columns.
+- Source reference rows MUST already be sorted by canonical chromosome order
+  (`1`-`22`, `X`) and then by ascending `bp` within chromosome.
+- `load_reference` MUST validate this ordering and fail clearly on violations.
+  It MUST NOT silently reorder rows.
 - Compute and retain each shard reference checksum.
 - Assume the upstream allele contract has already been satisfied; loaders
   validate syntax and preserve allele order, but `.bim` alone is not sufficient
@@ -95,6 +98,8 @@ Expected behavior:
 - `is_object_compatible` checks one loaded statgen object against this
   reference panel by comparing shard counts, row counts, and stored shard
   checksums where available. It returns `true` when compatible and `false`
-  otherwise. Omitting `strict` warns on checksum mismatch; strict validation
-  logs mismatches as errors. Compatibility mismatches do not raise exceptions;
-  callers branch on the returned boolean.
+  otherwise. Compatibility mismatches are logged as warnings, do not raise
+  exceptions, and callers branch on the returned boolean.
+- `load_reference_cache` assumes cache payloads were validated at cache
+  creation time and should not re-run full source-style row validation (for
+  example per-row parsing/sort-order checks) on the default load path.

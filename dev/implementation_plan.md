@@ -31,7 +31,8 @@ Implementation tasks:
 - create `tests/fixtures/generate.py`: standalone script that writes all
   committed fixture files deterministically using explicit little-endian dtypes;
   run with `python tests/fixtures/generate.py` to regenerate;
-- generate and commit fixtures under `tests/fixtures/`:
+- generate and commit baseline fixtures under `tests/fixtures/` (this is the
+  authoritative concrete baseline fixture composition):
   - one autosome and chrX;
   - sharded `.bim` files and one non-sharded `.bim`;
   - inputs using genomatch NCBI contig naming;
@@ -84,6 +85,27 @@ Tests and acceptance criteria:
 - compatibility checks return `false` without raising for row-count or checksum
   mismatches;
 - chrX is supported without chromosome 1-22 hard-coding.
+
+## Fixture sourcing policy for Phase 2+
+
+Follow `spec/testing.md` as the source of truth for fixture growth policy.
+From Phase 2 onward, tests should use:
+
+- Phase 2 (`Sumstats`): checked-in canonical TSV fixtures for cross-language
+  alignment and `logpvec` contract; on-the-fly malformed/missing-column files
+  for failure-path tests.
+- Phase 3 (`Annotations`): checked-in canonical BED fixtures for overlap,
+  adjacency, boundary, and exact chromosome-label behavior; on-the-fly
+  permutation/stress boundary inputs.
+- Phase 4 (`LD`): checked-in canonical LD shards/shard-group fixtures for
+  parity and compatibility; on-the-fly binary/metadata corruption cases.
+- Phase 5 (LD build): on-the-fly synthetic PLINK-like tables for unit tests
+  and on-the-fly generated outputs for integration validation.
+- Phase 6 (`Genotype` metadata): checked-in canonical bfile metadata fixtures;
+  on-the-fly inconsistent/missing shard-file cases.
+- Phase 7 (workflow validation): default to checked-in canonical workflow
+  inputs; only add new checked-in fixtures when a new workflow contract cannot
+  be represented by temporary derived inputs.
 
 ## Phase 2: summary statistics alignment
 

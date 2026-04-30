@@ -27,3 +27,6 @@ octave-workspace
 
 # Claude Code
 .claude/
+
+# Codex
+.codex

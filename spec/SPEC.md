@@ -121,15 +121,17 @@ API.
 
 1. [conventions.md](conventions.md): scope, input contract, shard/panel
    conventions, index rules, and storage policy.
-2. [reference.md](reference.md): `ReferenceShard` and `ReferencePanel`.
-3. [genotype.md](genotype.md): `GenotypeShard` and `GenotypePanel`.
-4. [ld.md](ld.md): `LDShard` and `LDPanel`.
-5. [annotations.md](annotations.md): `AnnotationShard`,
+2. [performance-contract.md](performance-contract.md): cache purpose and
+   performance-oriented storage requirements.
+3. [reference.md](reference.md): `ReferenceShard` and `ReferencePanel`.
+4. [genotype.md](genotype.md): `GenotypeShard` and `GenotypePanel`.
+5. [ld.md](ld.md): `LDShard` and `LDPanel`.
+6. [annotations.md](annotations.md): `AnnotationShard`,
    `AnnotationPanel`, and BED-to-BIM painting.
-6. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
-7. [testing.md](testing.md): pytest and Octave consistency strategy.
-8. [python.md](python.md): Python package layout and implementation conventions.
-9. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
+7. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
+8. [testing.md](testing.md): pytest and Octave consistency strategy.
+9. [python.md](python.md): Python package layout and implementation conventions.
+10. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
 
 ## Optional collection manifests
 

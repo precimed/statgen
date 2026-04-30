@@ -42,6 +42,11 @@ python/
 - String arguments (paths, labels) accept `str` or `pathlib.Path`; internally
   convert to `pathlib.Path` at the loader boundary.
 
+Cache format requirements are defined normatively in
+[performance-contract.md](performance-contract.md). In particular, Python cache
+array payloads along the SNP axis must remain native numeric/logical/sparse
+arrays in binary form, not JSON/text-serialized arrays.
+
 ## Shard representation
 
 Panels hold an ordered list of shard objects. Genome-wide accessors
@@ -56,12 +61,13 @@ Do not use assertions for user-facing validation; assertions are for internal
 invariants only.
 
 Compatibility checks (`is_object_compatible`) log via the standard `logging`
-module at `WARNING` level for non-strict mismatches and `ERROR` level for
-strict mismatches. They do not raise.
+module at `WARNING` level for mismatches. They do not raise.
 
 ## Optional dependencies
 
 - `numpy` and `scipy.sparse` are required for all numeric objects.
-- No other third-party dependencies are required for the core package.
-- Optional dependencies (e.g. for cache formats) are declared as extras in
-  `pyproject.toml`.
+- `pandas` is required for tabular loading paths.
+- Additional third-party dependencies may be added when they materially improve
+  correctness, performance, or maintainability.
+- Dependencies that are not part of the default install should be declared as
+  extras in `pyproject.toml`.

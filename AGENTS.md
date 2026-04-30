@@ -32,4 +32,4 @@ Do not hardcode local paths or machine-specific assumptions. Fixture generation 
 
 ## Commits
 
-Do not commit unless explicitly asked. If instructions say "implement phases X–Y with one commit per phase" that covers all those commits; otherwise wait for the user to ask. Never push. Prefer informative commit messages with a short description.
+Do not commit and do not stage changes unless explicitly asked. If instructions say "implement phases X–Y with one commit per phase" that covers all those commits. Prefer informative commit messages with a short description.

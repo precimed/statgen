@@ -11,7 +11,8 @@ and committed to the repository. The script is the authoritative description of
 what each fixture contains and how it was constructed; running it regenerates
 all fixtures deterministically.
 
-Fixtures are committed (not generated at test time) so that:
+Canonical source fixtures under `tests/fixtures/` are committed (not generated
+at test time) so that:
 
 - `pytest` runs immediately in CI without a prerequisite step;
 - Python and Octave tests read the exact same on-disk bytes;
@@ -29,20 +30,34 @@ Binary arrays in fixtures must be written with explicit little-endian dtypes
 machines, so the intent is unambiguous.
 
 Session-scoped pytest fixtures in `conftest.py` may produce derived or computed
-outputs in a temporary directory, but source files (BIM, BED, TSV, LD triplets)
-are always the committed static files under `tests/fixtures/`.
+outputs in a temporary directory. Tests may also generate on-the-fly temporary
+inputs for non-contract scenarios per the fixture growth policy below.
 
-## Fixture data
+## Fixture growth policy
 
-Tests should generate tiny portable object fixtures with:
+`tests/fixtures/` is reserved for canonical, contract-critical source files.
 
-- 2 chromosomes, including an autosome and chrX where possible;
-- a few SNPs per chromosome;
-- one PLINK bfile genotype shard per chromosome;
-- one LD shard per chromosome;
-- one annotation panel with a few annotations;
-- one `Sumstats` object with finite and missing entries.
-- both sharded and one-shard/non-sharded reference layouts where supported.
+Tests MUST add or expand checked-in fixtures only when at least one applies:
+
+- the scenario defines or validates a portable format contract (on-disk bytes,
+  columns, or metadata);
+- Python and MATLAB/Octave must validate the same exact source bytes;
+- the case is a stable regression anchor for a previously fixed bug.
+
+Tests MUST use on-the-fly temporary inputs for:
+
+- malformed input and parser/validator failure cases;
+- combinatorial or stress boundary cases where exact source bytes are not part
+  of the public contract;
+- transient perturbations of canonical fixtures (for example truncating one
+  binary array to test length validation).
+
+Phase-specific fixture sourcing decisions belong in
+`dev/implementation_plan.md` and must remain consistent with this policy.
+
+Concrete baseline fixture composition (for example exact chromosome count,
+fixture sizes, and object mix) is implementation-scoped and is defined in
+Phase 0 of `dev/implementation_plan.md`.
 
 ## Octave test harness
 

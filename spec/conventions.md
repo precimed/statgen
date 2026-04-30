@@ -51,6 +51,18 @@ normalization, allele harmonization, REF/ALT assignment, strand resolution, and
 source-specific GWAS cleaning belong to upstream preprocessing tools such as
 `genomatch` or project-specific pipelines.
 
+## BIM `cm` column policy
+
+For BIM-like inputs, the `cm` column is a legacy placeholder required only for
+6-column schema compatibility (`chr`, `snp`, `cm`, `bp`, `a1`, `a2`).
+
+`statgen` MUST treat `cm` as input-format scaffolding, not biological signal:
+
+- loaders MUST validate BIM row shape includes the `cm` column;
+- `cm` MUST NOT be stored in in-memory statgen objects;
+- `cm` MUST NOT participate in checksums, compatibility checks, caches, or
+  public APIs.
+
 Loaders must not silently convert between chromosome naming schemes. For
 example, `chr1`, `1`, and `NC_000001.11` are distinct labels to `statgen`.
 If a BED file uses `chr1` and the reference uses `1`, annotation painting must
@@ -97,17 +109,15 @@ metadata stores the same checksum for its paired reference shard.
 Compatibility checks are exposed through the reference panel:
 
 ```text
-ReferencePanel.is_object_compatible(object, optional strict) -> bool
+ReferencePanel.is_object_compatible(object) -> bool
 ```
 
 `object` is one loaded statgen object expected to be aligned to that reference
 panel. The method compares stored shard checksums where available and checks
 compatible shard counts and row counts. It returns `true` when the object is
 compatible and `false` otherwise. Implementations may log informational
-messages, warnings, or errors to the console. The recommended default is to
-warn on checksum mismatch unless the caller requests strict validation, in
-which case mismatches should be logged as errors. Compatibility mismatches do
-not raise exceptions; callers branch on the returned boolean.
+messages or warnings to the console. Compatibility mismatches do not raise
+exceptions; callers branch on the returned boolean.
 
 ## Shards and panels
 

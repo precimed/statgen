@@ -78,6 +78,11 @@ No wrappers are created for classes or internal helpers.
 - String arguments are character arrays or string scalars; convert to
   `char` at the loader boundary for compatibility with Octave string handling.
 
+Cache format requirements are defined normatively in
+[performance-contract.md](performance-contract.md). In particular, MATLAB/Octave
+caches must be `.mat` files with SNP-axis vectors/matrices stored as native
+numeric/logical/sparse arrays.
+
 ## Shard representation
 
 Panels hold an ordered cell array or struct array of shard objects. Genome-wide
@@ -88,6 +93,5 @@ accessors concatenate shard arrays and return a single matrix or vector.
 Use `error('statgen:errorID', 'message ...')` with a namespaced error ID for
 all user-facing validation failures. Do not use `assert` for input validation.
 
-Compatibility checks log via `warning('statgen:compat', ...)` for non-strict
-mismatches and `warning('statgen:compatStrict', ...)` for strict mismatches.
+Compatibility checks log via `warning('statgen:compat', ...)` for mismatches.
 They return a scalar logical and do not throw.
