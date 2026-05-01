@@ -18,7 +18,7 @@ function sumstats = build_sumstats_(tbl, reference, path)
     if is_table_like_(tbl)
         var_names = lower(tbl.Properties.VariableNames);
     else
-        var_names = lower(tbl._var_names(:)');
+        var_names = lower(tbl.('_var_names')(:)');
     end
     required = {'chr', 'bp', 'a1', 'a2', 'z', 'n'};
     for i = 1:numel(required)
@@ -168,7 +168,7 @@ function [tbl, cleanup_fn] = parse_sumstats_table_(path)
     cols = textscan(fid, fmt, 'Delimiter', '\t', 'Whitespace', '', 'MultipleDelimsAsOne', false, 'ReturnOnError', false);
     clear closer;
     S = struct();
-    S._var_names = names;
+    S.('_var_names') = names;
     for i = 1:numel(names)
         S.(names{i}) = ensure_cellstr_col_(cols{i});
     end
@@ -183,7 +183,7 @@ function col = get_col_(tbl, var_names, name)
     if is_table_like_(tbl)
         col = tbl{:, idx};
     else
-        field_name = tbl._var_names{idx};
+        field_name = tbl.('_var_names'){idx};
         col = tbl.(field_name);
     end
 end

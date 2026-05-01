@@ -280,6 +280,153 @@ def test_octave_sumstats_roundtrip(tmp_path):
 
 @pytest.mark.octave
 @skipif_no_octave
+def test_octave_missing_required_columns_fail(tmp_path):
+    base_row = {"chr": "1", "bp": "100", "a1": "A", "a2": "G", "z": "1.2", "n": "900", "p": "0.1"}
+    missing_cols = ["chr", "bp", "a1", "a2", "z", "n"]
+    paths = []
+    for missing_col in missing_cols:
+        cols = [c for c in ("chr", "bp", "a1", "a2", "z", "n", "p") if c != missing_col]
+        text = "\t".join(cols) + "\n" + "\t".join(base_row[c] for c in cols) + "\n"
+        p = tmp_path / f"missing_{missing_col}.tsv.gz"
+        _write_gz_tsv(p, text)
+        paths.append(str(p))
+
+    paths_expr = "{" + ", ".join(f"'{p}'" for p in paths) + "}"
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"paths = {paths_expr}; "
+        "ok = zeros(1, numel(paths)); "
+        "for i = 1:numel(paths); "
+        "  try; "
+        "    statgen.load_sumstats(paths{i}, ref); "
+        "    ok(i) = 0; "
+        "  catch; "
+        "    ok(i) = 1; "
+        "  end; "
+        "end; "
+        "fprintf('%d %d %d %d %d %d\\n', ok);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1 1 1 1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_strict_required_numeric_validation(tmp_path):
+    bad_z = tmp_path / "bad_z.tsv.gz"
+    _write_gz_tsv(
+        bad_z,
+        "chr\tbp\ta1\ta2\tz\tn\n"
+        "1\t100\tA\tG\tNA\t1000\n",
+    )
+    bad_n = tmp_path / "bad_n.tsv.gz"
+    _write_gz_tsv(
+        bad_n,
+        "chr\tbp\ta1\ta2\tz\tn\n"
+        "1\t100\tA\tG\t1.5\tInf\n",
+    )
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"ok1 = 0; try; statgen.load_sumstats('{bad_z}', ref); catch; ok1 = 1; end; "
+        f"ok2 = 0; try; statgen.load_sumstats('{bad_n}', ref); catch; ok2 = 1; end; "
+        "fprintf('%d %d\\n', ok1, ok2);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_p_edge_cases(tmp_path):
+    path = tmp_path / "p_edge_cases.tsv.gz"
+    _write_gz_tsv(
+        path,
+        "chr\tbp\ta1\ta2\tz\tn\tp\n"
+        "1\t100\tA\tG\t1.0\t1000\t1\n"
+        "1\t200\tC\tT\t1.0\t1000\t-0.1\n"
+        "1\t300\tA\tC\t1.0\t1000\t1.1\n"
+        "1\t400\tG\tA\t1.0\t1000\t\n"
+        "X\t100\tA\tG\t1.0\t1000\t0\n"
+        "X\t200\tC\tT\t1.0\t1000\t0.2\n",
+    )
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"s = statgen.load_sumstats('{path}', ref); "
+        "v = s.logpvec; "
+        "ok = zeros(1, 8); "
+        "ok(1) = (v(1) == 0); "
+        "ok(2) = isnan(v(2)); "
+        "ok(3) = isnan(v(3)); "
+        "ok(4) = isnan(v(4)); "
+        "ok(5) = isnan(v(5)); "
+        "ok(6) = isinf(v(6)) && v(6) > 0; "
+        "ok(7) = abs(v(7) - (-log10(0.2))) < 1e-12; "
+        "ok(8) = isnan(v(8)); "
+        "fprintf('%d %d %d %d %d %d %d %d\\n', ok);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1 1 1 1 1 1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_allele_flip_does_not_match_reference_key(tmp_path):
+    path = tmp_path / "allele_flip.tsv.gz"
+    _write_gz_tsv(
+        path,
+        "chr\tbp\ta1\ta2\tz\tn\tp\n"
+        "1\t100\tG\tA\t7.0\t1000\t0.01\n"
+        "X\t100\tA\tG\t3.0\t500\t0.01\n",
+    )
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"s = statgen.load_sumstats('{path}', ref); "
+        "ok1 = isnan(s.zvec(1)); "
+        "ok2 = isnan(s.nvec(1)); "
+        "ok3 = isnan(s.logpvec(1)); "
+        "ok4 = abs(s.zvec(6) - 3.0) < 1e-12; "
+        "fprintf('%d %d %d %d\\n', ok1, ok2, ok3, ok4);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1 1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_cache_validation_errors(tmp_path):
+    path = tmp_path / "traits.tsv.gz"
+    _write_gz_tsv(path, _valid_sumstats_text(include_optional=True))
+    cache = tmp_path / "sumstats_cache.mat"
+    bad_schema = tmp_path / "sumstats_bad_schema.mat"
+    bad_lengths = tmp_path / "sumstats_bad_lengths.mat"
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"s = statgen.load_sumstats('{path}', ref); "
+        f"statgen.save_sumstats_cache(s, '{cache}'); "
+        f"L = load('{cache}', 'cache_meta', 'cache_shards'); "
+        "cache_meta = L.cache_meta; cache_shards = L.cache_shards; "
+        "cache_meta.schema = 'sumstats_cache/bad'; "
+        f"save('{bad_schema}', 'cache_meta', 'cache_shards'); "
+        f"ok1 = 0; try; statgen.load_sumstats_cache('{bad_schema}'); catch; ok1 = 1; end; "
+        f"L2 = load('{cache}', 'cache_meta', 'cache_shards'); "
+        "cache_meta = L2.cache_meta; cache_shards = L2.cache_shards; "
+        "cache_meta.shard_checksums = cache_meta.shard_checksums(1:end-1); "
+        f"save('{bad_lengths}', 'cache_meta', 'cache_shards'); "
+        f"ok2 = 0; try; statgen.load_sumstats_cache('{bad_lengths}'); catch; ok2 = 1; end; "
+        f"ok3 = 0; try; statgen.load_sumstats_cache('{cache}', {{'2'}}); catch; ok3 = 1; end; "
+        "fprintf('%d %d %d\\n', ok1, ok2, ok3);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
 def test_octave_optional_fields_absent_use_empty_vector_sentinel(tmp_path):
     path = tmp_path / "traits_required_only.tsv.gz"
     _write_gz_tsv(path, _valid_sumstats_text(include_optional=False))
