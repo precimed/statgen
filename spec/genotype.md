@@ -38,7 +38,8 @@ A `GenotypeShard` is defined by:
 - `chr`: chromosome, including X;
 - `bed_path`, `bim_path`, `fam_path`;
 - `num_snp` and `num_sample`;
-- BIM rows with `chr`, `snp`, `cm`, `bp`, `a1`, `a2`;
+- BIM rows with `chr`, `snp`, `cm`, `bp`, `a1`, `a2` under the allele
+  contract in [conventions.md](conventions.md);
 - FAM sample IDs in file order;
 - allele contract: `.bed` genotypes are interpreted as counts/dosages of `a1`.
 
@@ -58,19 +59,22 @@ missing-genotype handling, sample/variant slicing, and reference-alignment
 validation remain to be specified before implementation.
 
 ```text
-load_genotype(path_or_paths) -> GenotypePanel
+load_genotype(path_or_paths, optional shards) -> GenotypePanel
 
 GenotypePanel.num_snp -> int
 GenotypePanel.num_sample -> int
 GenotypePanel.bim -> BIM metadata table
 GenotypePanel.fam -> FAM/sample metadata table
+GenotypePanel.select_shards(shards) -> GenotypePanel
 ```
 
 Expected behavior:
 
 - `path_or_paths` accepts a single bfile prefix (non-sharded) or a list of
   prefixes (sharded).
-- loads BIM and FAM metadata; `.bed` genotype data is read on demand.
-- no reference argument; no caching.
+- Shard discovery, contig validation, and shard subsetting follow
+  [contigs-and-shards.md](contigs-and-shards.md).
+- Loads BIM and FAM metadata; `.bed` genotype data is read on demand.
+- No reference argument; no caching.
 - Metadata accessors are read-only and may be implemented before genotype
   matrix access. Dense genotype matrix access remains deferred.

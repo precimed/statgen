@@ -16,11 +16,13 @@ explicitly declared otherwise, and the `a1=non-reference`, `a2=reference`
 allele contract. `statgen` uses these inputs as-is. It does not normalize
 chromosome labels, swap alleles, infer reference alleles, liftover coordinates,
 or repair strand issues.
+Within the current default contract, supported contigs are `1`-`22` and `X`.
 
 Portable disk representation choices:
 
 - `ReferencePanel`, `GenotypePanel`, and `LDPanel` may be sharded or
   non-sharded on disk. Sharded paths use `@` as the shard-label placeholder.
+  Non-sharded is an input layout only; in-memory panels are contig-sharded.
   The sharding of an `LDPanel` must match the sharding of the reference used
   with it.
 - `Sumstats` is non-sharded on disk: one `.tsv.gz` per trait/source.
@@ -121,17 +123,19 @@ API.
 
 1. [conventions.md](conventions.md): scope, input contract, shard/panel
    conventions, index rules, and storage policy.
-2. [performance-contract.md](performance-contract.md): cache purpose and
+2. [contigs-and-shards.md](contigs-and-shards.md): canonical contig set,
+   row-order contract, shard discovery, and shard subsetting rules.
+3. [performance-contract.md](performance-contract.md): cache purpose and
    performance-oriented storage requirements.
-3. [reference.md](reference.md): `ReferenceShard` and `ReferencePanel`.
-4. [genotype.md](genotype.md): `GenotypeShard` and `GenotypePanel`.
-5. [ld.md](ld.md): `LDShard` and `LDPanel`.
-6. [annotations.md](annotations.md): `AnnotationShard`,
+4. [reference.md](reference.md): `ReferenceShard` and `ReferencePanel`.
+5. [genotype.md](genotype.md): `GenotypeShard` and `GenotypePanel`.
+6. [ld.md](ld.md): `LDShard` and `LDPanel`.
+7. [annotations.md](annotations.md): `AnnotationShard`,
    `AnnotationPanel`, and BED-to-BIM painting.
-7. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
-8. [testing.md](testing.md): pytest and Octave consistency strategy.
-9. [python.md](python.md): Python package layout and implementation conventions.
-10. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
+8. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
+9. [testing.md](testing.md): pytest and Octave consistency strategy.
+10. [python.md](python.md): Python package layout and implementation conventions.
+11. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
 
 ## Optional collection manifests
 

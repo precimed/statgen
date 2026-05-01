@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -13,9 +14,47 @@ _CACHE_SCHEMA = "reference_cache/0.1"
 _BIM_NCOLS = 6
 _CANONICAL_CHR_ORDER = [str(i) for i in range(1, 23)] + ["X"]
 _CHR_RANK = {c: i for i, c in enumerate(_CANONICAL_CHR_ORDER)}
+_IGNORED_CHR = {"Y", "MT"}
+_DNA_ALLELE_RE = re.compile(r"^[ACGT]+$")
 
 
-def _validate_reference_sort_order(chr_col: pd.Series, bp_col: np.ndarray, path: Path) -> None:
+def _validate_requested_shards(shards, available_labels, where: str) -> list[str]:
+    labels = list(available_labels)
+    if shards is None:
+        return labels
+
+    if isinstance(shards, str):
+        raise ValueError(f"{where}: shards must be a non-empty list of unique canonical contig labels")
+
+    requested = list(shards)
+    if not requested:
+        raise ValueError(f"{where}: shards must be a non-empty list of unique canonical contig labels")
+
+    seen = set()
+    prev_rank = None
+    for label in requested:
+        if label not in _CHR_RANK:
+            raise ValueError(f"{where}: unsupported shard label {label!r}; expected canonical labels 1-22 or X")
+        if label in seen:
+            raise ValueError(f"{where}: duplicate shard label {label!r} in shards")
+        rank = _CHR_RANK[label]
+        if prev_rank is not None and rank <= prev_rank:
+            raise ValueError(f"{where}: shards must be in canonical subsequence order")
+        seen.add(label)
+        prev_rank = rank
+        if label not in labels:
+            raise ValueError(f"{where}: requested shard {label!r} is not present")
+    return requested
+
+
+def _validate_reference_sort_order(
+    chr_col: pd.Series,
+    bp_col: np.ndarray,
+    a1_col: pd.Series,
+    a2_col: pd.Series,
+    line_numbers: np.ndarray,
+    path: Path,
+) -> None:
     chr_rank = chr_col.map(_CHR_RANK)
     bad_chr = chr_rank.isna()
     if bad_chr.any():
@@ -24,19 +63,54 @@ def _validate_reference_sort_order(chr_col: pd.Series, bp_col: np.ndarray, path:
             f"{path}:{idx + 1}: chr must use canonical labels 1-22 or X"
         )
 
-    chr_rank_vals = chr_rank.to_numpy(dtype=np.int64)
-    bp_vals = np.asarray(bp_col, dtype=np.int64)
-    bad_order = (chr_rank_vals[1:] < chr_rank_vals[:-1]) | (
-        (chr_rank_vals[1:] == chr_rank_vals[:-1]) & (bp_vals[1:] < bp_vals[:-1])
+    order_df = pd.DataFrame(
+        {
+            "chr_rank": chr_rank.to_numpy(dtype=np.int64),
+            "bp": np.asarray(bp_col, dtype=np.int64),
+            "a1": a1_col.to_numpy(dtype=object),
+            "a2": a2_col.to_numpy(dtype=object),
+            "line": np.asarray(line_numbers, dtype=np.int64),
+        }
     )
-    if bad_order.any():
-        idx = int(np.flatnonzero(bad_order)[0]) + 1
+
+    dup_mask = order_df.duplicated(
+        subset=["chr_rank", "bp", "a1", "a2"], keep="first"
+    )
+    if dup_mask.any():
+        line = int(order_df.loc[dup_mask.idxmax(), "line"])
         raise ValueError(
-            f"{path}:{idx + 1}: rows must be sorted by canonical chromosome (1-22, X) and ascending bp"
+            f"{path}:{line}: duplicate (chr, bp, a1, a2) tuple is not allowed"
+        )
+
+    prev = order_df.shift(1)
+    bad_order = (
+        (order_df["chr_rank"] < prev["chr_rank"])
+        | (
+            (order_df["chr_rank"] == prev["chr_rank"])
+            & (
+                (order_df["bp"] < prev["bp"])
+                | (
+                    (order_df["bp"] == prev["bp"])
+                    & (
+                        (order_df["a1"] < prev["a1"])
+                        | (
+                            (order_df["a1"] == prev["a1"])
+                            & (order_df["a2"] < prev["a2"])
+                        )
+                    )
+                )
+            )
+        )
+    )
+    bad_order = bad_order.fillna(False)
+    if bad_order.any():
+        line = int(order_df.loc[bad_order.idxmax(), "line"])
+        raise ValueError(
+            f"{path}:{line}: rows must be sorted by (chr_rank, bp, a1, a2) in canonical contig order"
         )
 
 
-def _parse_bim(path: Path) -> list:
+def _parse_bim(path: Path) -> pd.DataFrame:
     try:
         df = pd.read_csv(
             path,
@@ -68,10 +142,35 @@ def _parse_bim(path: Path) -> list:
         idx = int(bad_chr.idxmax())
         raise ValueError(f"{path}:{idx + 1}: chr must be non-empty")
 
+    chr_style = chr_col.str.lower().str.startswith("chr")
+    if chr_style.any():
+        idx = int(chr_style.idxmax())
+        raise ValueError(f"{path}:{idx + 1}: chr-style labels (e.g., chr1/chrX) are not allowed")
+
+    known_chr = chr_col.isin(_CANONICAL_CHR_ORDER) | chr_col.isin(_IGNORED_CHR)
+    if not known_chr.all():
+        idx = int((~known_chr).idxmax())
+        raise ValueError(
+            f"{path}:{idx + 1}: unsupported chr label {chr_col.iat[idx]!r}; expected 1-22, X (Y/MT are ignored)"
+        )
+
     bad_allele = a1_col.eq("") | a2_col.eq("")
     if bad_allele.any():
         idx = int(bad_allele.idxmax())
         raise ValueError(f"{path}:{idx + 1}: a1 and a2 must be non-empty")
+
+    bad_a1_syntax = ~a1_col.str.fullmatch(_DNA_ALLELE_RE)
+    if bad_a1_syntax.any():
+        idx = int(bad_a1_syntax.idxmax())
+        raise ValueError(
+            f"{path}:{idx + 1}: a1 must be uppercase DNA bases (A/C/G/T): {a1_col.iat[idx]!r}"
+        )
+    bad_a2_syntax = ~a2_col.str.fullmatch(_DNA_ALLELE_RE)
+    if bad_a2_syntax.any():
+        idx = int(bad_a2_syntax.idxmax())
+        raise ValueError(
+            f"{path}:{idx + 1}: a2 must be uppercase DNA bases (A/C/G/T): {a2_col.iat[idx]!r}"
+        )
 
     cm_num = pd.to_numeric(cm_raw, errors="coerce")
     bad_cm = cm_num.isna()
@@ -90,43 +189,68 @@ def _parse_bim(path: Path) -> list:
         )
 
     bp_int = bp_num.astype(np.int64)
-    _validate_reference_sort_order(chr_col, bp_int.to_numpy(dtype=np.int64), path)
+    keep = chr_col.isin(_CANONICAL_CHR_ORDER)
+    chr_kept = chr_col[keep]
+    bp_kept = bp_int[keep]
+    a1_kept = a1_col[keep]
+    a2_kept = a2_col[keep]
+    line_numbers = chr_kept.index.to_numpy(dtype=np.int64) + 1
+    _validate_reference_sort_order(
+        chr_kept,
+        bp_kept.to_numpy(dtype=np.int64),
+        a1_kept,
+        a2_kept,
+        line_numbers,
+        path,
+    )
 
     # cm is validated for BIM schema compatibility but intentionally ignored
     # in-memory per spec.
-    return list(
-        zip(
-            chr_col.tolist(),
-            snp_col.tolist(),
-            bp_int.tolist(),
-            a1_col.tolist(),
-            a2_col.tolist(),
-        )
+    out = pd.DataFrame(
+        {
+            "chr": chr_kept.to_numpy(dtype=object),
+            "snp": snp_col[keep].to_numpy(dtype=object),
+            "bp": bp_kept.to_numpy(dtype=np.int64),
+            "a1": a1_kept.to_numpy(dtype=object),
+            "a2": a2_kept.to_numpy(dtype=object),
+        }
     )
+    return out.reset_index(drop=True)
 
 
-def _checksum(rows) -> str:
-    text = "".join(f"{r[0]}:{r[2]}:{r[3]}:{r[4]}\n" for r in rows)
+def _checksum_from_arrays(
+    chr_arr: np.ndarray, bp_arr: np.ndarray, a1_arr: np.ndarray, a2_arr: np.ndarray
+) -> str:
+    if chr_arr.size == 0:
+        return hashlib.md5(b"").hexdigest()
+
+    line_series = (
+        pd.Series(chr_arr, dtype="string")
+        .str.cat(pd.Series(bp_arr, dtype=np.int64).astype("string"), sep=":")
+        .str.cat(pd.Series(a1_arr, dtype="string"), sep=":")
+        .str.cat(pd.Series(a2_arr, dtype="string"), sep=":")
+    )
+    text = line_series.str.cat(sep="\n") + "\n"
     return hashlib.md5(text.encode()).hexdigest()
 
 
-def _chr_sort_key(label: str):
-    if label not in _CHR_RANK:
-        raise ValueError(f"Unsupported shard label: {label!r}; expected canonical labels 1-22 or X")
-    return _CHR_RANK[label]
-
-
 class ReferenceShard:
-    def __init__(self, label: str, rows, *, _checksum_override: str | None = None):
+    def __init__(
+        self,
+        label: str,
+        chr_arr,
+        snp_arr,
+        bp_arr,
+        a1_arr,
+        a2_arr,
+    ):
         self._label = label
-        self._chr = np.array([r[0] for r in rows], dtype=object)
-        self._snp = np.array([r[1] for r in rows], dtype=object)
-        self._bp = np.array([r[2] for r in rows], dtype=np.int64)
-        self._a1 = np.array([r[3] for r in rows], dtype=object)
-        self._a2 = np.array([r[4] for r in rows], dtype=object)
-        self._checksum = (
-            _checksum_override if _checksum_override is not None else _checksum(rows)
-        )
+        self._chr = np.asarray(chr_arr, dtype=object)
+        self._snp = np.asarray(snp_arr, dtype=object)
+        self._bp = np.asarray(bp_arr, dtype=np.int64)
+        self._a1 = np.asarray(a1_arr, dtype=object)
+        self._a2 = np.asarray(a2_arr, dtype=object)
+        self._checksum = _checksum_from_arrays(self._chr, self._bp, self._a1, self._a2)
 
     @property
     def label(self) -> str:
@@ -226,6 +350,12 @@ class ReferencePanel:
     def shards(self) -> list:
         return list(self._shards)
 
+    def select_shards(self, shards) -> "ReferencePanel":
+        available = [s.label for s in self._shards]
+        selected = _validate_requested_shards(shards, available, "ReferencePanel.select_shards")
+        by_label = {s.label: s for s in self._shards}
+        return ReferencePanel([by_label[label] for label in selected])
+
     def is_object_compatible(self, obj) -> bool:
         log_fn = logger.warning
 
@@ -244,6 +374,20 @@ class ReferencePanel:
 
         ok = True
         for ref_s, obj_s in zip(self._shards, obj_shards):
+            obj_label = getattr(obj_s, "label", None)
+            if obj_label is None:
+                log_fn(
+                    f"statgen: is_object_compatible: shard {ref_s.label}: object shard has no label"
+                )
+                ok = False
+                continue
+            if obj_label != ref_s.label:
+                log_fn(
+                    "statgen: is_object_compatible: shard label mismatch: "
+                    f"reference {ref_s.label}, object {obj_label}"
+                )
+                ok = False
+                continue
             obj_num = getattr(obj_s, "num_snp", None)
             if obj_num is None:
                 log_fn(
@@ -268,56 +412,62 @@ class ReferencePanel:
         return ok
 
 
-def load_reference(path) -> ReferencePanel:
+def load_reference(path, shards=None) -> ReferencePanel:
     path_str = str(path)
     path_obj = Path(path_str)
 
     if "@" in path_str:
-        parent = path_obj.parent
-        name = path_obj.name
-        at_idx = name.index("@")
-        name_prefix = name[:at_idx]
-        name_suffix = name[at_idx + 1:]
+        available_labels = []
+        available_paths = {}
+        for label in _CANONICAL_CHR_ORDER:
+            candidate = Path(path_str.replace("@", label))
+            if candidate.is_file():
+                available_labels.append(label)
+                available_paths[label] = candidate
 
-        candidates = []
-        for f in sorted(parent.iterdir()):
-            if not f.is_file():
-                continue
-            n = f.name
-            if not n.startswith(name_prefix):
-                continue
-            if name_suffix and not n.endswith(name_suffix):
-                continue
-            inner = n[len(name_prefix): -len(name_suffix) if name_suffix else None]
-            if inner:
-                candidates.append((inner, f))
-
-        try:
-            candidates.sort(key=lambda x: _chr_sort_key(x[0]))
-        except ValueError as exc:
-            raise ValueError(f"{path_str}: {exc}") from None
-
-        if not candidates:
+        if not available_labels:
             raise FileNotFoundError(
                 f"No BIM shards found matching template: {path_str}"
             )
 
-        shards = [
-            ReferenceShard(label, _parse_bim(bim_path))
-            for label, bim_path in candidates
-        ]
+        selected = _validate_requested_shards(
+            shards, available_labels, "load_reference"
+        )
+        shards = []
+        for label in selected:
+            bim_df = _parse_bim(available_paths[label])
+            shards.append(
+                ReferenceShard(
+                    label,
+                    bim_df["chr"].to_numpy(dtype=object),
+                    bim_df["snp"].to_numpy(dtype=object),
+                    bim_df["bp"].to_numpy(dtype=np.int64),
+                    bim_df["a1"].to_numpy(dtype=object),
+                    bim_df["a2"].to_numpy(dtype=object),
+                )
+            )
         return ReferencePanel(shards)
 
-    rows = _parse_bim(path_obj)
+    bim_df = _parse_bim(path_obj)
 
-    by_chr: dict = {}
-    for r in rows:
-        c = r[0]
-        if c not in by_chr:
-            by_chr[c] = []
-        by_chr[c].append(r)
-
-    return ReferencePanel([ReferenceShard(c, by_chr[c]) for c in by_chr])
+    available_labels = [
+        c for c in _CANONICAL_CHR_ORDER if (bim_df["chr"] == c).any()
+    ]
+    selected = _validate_requested_shards(shards, available_labels, "load_reference")
+    out_shards = []
+    for c in selected:
+        shard_df = bim_df.loc[bim_df["chr"] == c]
+        out_shards.append(
+            ReferenceShard(
+                c,
+                shard_df["chr"].to_numpy(dtype=object),
+                shard_df["snp"].to_numpy(dtype=object),
+                shard_df["bp"].to_numpy(dtype=np.int64),
+                shard_df["a1"].to_numpy(dtype=object),
+                shard_df["a2"].to_numpy(dtype=object),
+            )
+        )
+    return ReferencePanel(out_shards)
 
 
 def save_reference_cache(panel: ReferencePanel, path) -> None:
@@ -334,34 +484,41 @@ def save_reference_cache(panel: ReferencePanel, path) -> None:
     }
     for i, s in enumerate(panel.shards):
         p = f"s{i}_"
-        arrays[p + "chr"] = np.asarray([str(v) for v in s.chr], dtype=str)
-        arrays[p + "snp"] = np.asarray([str(v) for v in s.snp], dtype=str)
+        arrays[p + "chr"] = np.asarray(s.chr, dtype=str)
+        arrays[p + "snp"] = np.asarray(s.snp, dtype=str)
         arrays[p + "bp"]  = s.bp
-        arrays[p + "a1"]  = np.asarray([str(v) for v in s.a1], dtype=str)
-        arrays[p + "a2"]  = np.asarray([str(v) for v in s.a2], dtype=str)
+        arrays[p + "a1"]  = np.asarray(s.a1, dtype=str)
+        arrays[p + "a2"]  = np.asarray(s.a2, dtype=str)
     np.savez_compressed(path, **arrays)
 
 
-def load_reference_cache(path) -> ReferencePanel:
-    data = np.load(path, allow_pickle=False)
-    meta = json.loads(bytes(data["_meta"]).decode())
-    schema = meta.get("schema")
-    if schema != _CACHE_SCHEMA:
-        raise ValueError(f"Unsupported reference cache schema: {schema!r}")
-    shards = []
-    for i, (label, checksum) in enumerate(
-        zip(meta["shard_labels"], meta["shard_checksums"])
-    ):
-        p = f"s{i}_"
-        shards.append(
-            ReferenceShard._from_arrays(
-                label,
-                data[p + "chr"],
-                data[p + "snp"],
-                data[p + "bp"],
-                data[p + "a1"],
-                data[p + "a2"],
-                checksum,
+def load_reference_cache(path, shards=None) -> ReferencePanel:
+    with np.load(path, allow_pickle=False) as data:
+        meta = json.loads(bytes(data["_meta"]).decode())
+        schema = meta.get("schema")
+        if schema != _CACHE_SCHEMA:
+            raise ValueError(f"Unsupported reference cache schema: {schema!r}")
+
+        labels = list(meta.get("shard_labels", []))
+        checksums = list(meta.get("shard_checksums", []))
+        if len(labels) != len(checksums):
+            raise ValueError("Invalid reference cache: shard_labels and shard_checksums length mismatch")
+        selected = _validate_requested_shards(shards, labels, "load_reference_cache")
+        label_to_index = {label: i for i, label in enumerate(labels)}
+
+        shard_objs = []
+        for label in selected:
+            i = label_to_index[label]
+            p = f"s{i}_"
+            shard_objs.append(
+                ReferenceShard._from_arrays(
+                    label,
+                    data[p + "chr"],
+                    data[p + "snp"],
+                    data[p + "bp"],
+                    data[p + "a1"],
+                    data[p + "a2"],
+                    checksums[i],
+                )
             )
-        )
-    return ReferencePanel(shards)
+    return ReferencePanel(shard_objs)

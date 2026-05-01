@@ -36,11 +36,18 @@ The redesigned LD path should be implemented cleanly in `statgen`.
 - on-disk inputs must already be aligned to a specific reference genome;
 - GRCh38 is the default reference genome unless an object explicitly declares a
   different build;
-- contig labels must already use `genomatch` NCBI target naming (`1`-`22`,
-  `X`, `Y`, `MT` where applicable), unless an object explicitly declares a
-  different `genomatch` contig naming mode;
+- supported contigs, canonical order, label validation, and shard-loading rules
+  are defined in [contigs-and-shards.md](contigs-and-shards.md);
 - input variant records must already use `a1` as the non-reference allele and
   `a2` as the reference allele for that reference genome;
+- both `a1` and `a2` are non-empty strings of uppercase DNA bases (`A`, `C`,
+  `T`, `G`); either allele may be multi-base for indels;
+- loaders validate allele syntax and preserve values as-is without
+  normalization or case conversion;
+- loaders must not swap, normalize, or otherwise reinterpret `a1`/`a2` roles;
+  they treat allele strings as opaque values under the upstream contract;
+- loaders do not and cannot validate whether either allele matches the reference
+  genome sequence at that position.
 - GWAS signed effects and Z scores must already be oriented to `a1`;
 - genotype dosage/count data must count `a1`;
 - LD correlations must be signed with respect to `a1` dosages.
@@ -50,6 +57,13 @@ not resolve raw data into the contract. Reference liftover, contig
 normalization, allele harmonization, REF/ALT assignment, strand resolution, and
 source-specific GWAS cleaning belong to upstream preprocessing tools such as
 `genomatch` or project-specific pipelines.
+
+## Row-order contract
+
+Row order for source-like SNP tables is defined in
+[contigs-and-shards.md](contigs-and-shards.md). `ReferenceShard`/`ReferencePanel`
+preserve the loaded order in memory; all other aligned objects use that
+reference-defined order.
 
 ## BIM `cm` column policy
 
@@ -113,23 +127,25 @@ ReferencePanel.is_object_compatible(object) -> bool
 ```
 
 `object` is one loaded statgen object expected to be aligned to that reference
-panel. The method compares stored shard checksums where available and checks
-compatible shard counts and row counts. It returns `true` when the object is
+panel. Compatibility requires the same ordered shard labels, matching shard row
+counts, and matching shard checksums where available. It returns `true` when
 compatible and `false` otherwise. Implementations may log informational
 messages or warnings to the console. Compatibility mismatches do not raise
 exceptions; callers branch on the returned boolean.
 
 ## Shards and panels
 
-A shard is a single chromosome or otherwise local partition. A panel is an
-ordered collection of shards. Within each shard, rows define zero-based local
-SNP indices. Across a panel, rows define zero-based global SNP indices.
-
-In memory, all panel-like objects are represented as ordered shard vectors.
+A shard is a per-contig partition; a panel is an ordered collection of shards.
+Within each shard, rows define zero-based local SNP indices; across a panel,
+rows define zero-based global SNP indices. In memory, all panel-like objects
+are represented as ordered shard vectors.
 
 Portable reference, genotype, and LD panels may be sharded or non-sharded on
-disk. A one-chromosome analysis is a one-shard panel. A chromosome subset such
-as chr20-22 is represented by an ordered subset of shard files.
+disk. Non-sharded is an input layout only: in-memory panels are always
+contig-sharded.
+
+Supported shard labels, shard discovery, and subsetting rules are in
+[contigs-and-shards.md](contigs-and-shards.md).
 
 chrX is a first-class chromosome. Implementations may initially support only
 diploid chrX coding inherited from PLINK bfiles, but they must not hard-code

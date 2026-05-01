@@ -131,8 +131,8 @@ An `LDPanel` is stored as an ordered collection of LD shard directories
 input layouts:
 
 - **Sharded bfile input** (`@` in path, e.g. `chr@`): one bfile per
-  chromosome; each chromosome is processed independently and produces one shard
-  directory.
+  chromosome; discovery is by canonical substitution (`1`-`22`, `X`) and each
+  discovered shard is processed independently to produce one shard directory.
 - **Non-sharded bfile input** (single path, no `@`): the script splits by
   chromosome and produces one shard directory per chromosome.
 
@@ -197,7 +197,7 @@ panel. For panels built by `statgen_build_ld.py`, the default is `"combined"`.
 
 `LDShard` fields:
 
-- `chr`: chromosome or shard label;
+- `chr`: contig/shard label (`1`-`22` or `X`);
 - `sex`: `None` for autosomal/sex-agnostic shards; `"combined"`, `"male"`, or
   `"female"` for sex-specific chrX shards;
 - `num_snp`: number of SNPs in the shard;
@@ -226,10 +226,11 @@ for that reference.
 ```text
 load_ld(ld_dir, reference, optional chrX_default_sex) -> LDPanel
 save_ld_cache(panel, path)
-load_ld_cache(path, reference) -> LDPanel
+load_ld_cache(path, optional shards, optional chrX_default_sex) -> LDPanel
 
 LDPanel.mafvec(optional sex) -> num_snp float vector
 LDPanel.chrX_default_sex -> "combined" | "male" | "female"
+LDPanel.select_shards(shards) -> LDPanel
 LDPanel.multiply_r2(M, optional sex) -> vector or matrix with same shape as M
 fast_prune(logpvec, ld_panel, optional r2_threshold, optional sex) -> logpvec
 ```
@@ -240,8 +241,7 @@ directories from the supplied reference shard labels and loads
 `ld_dir/<shard_label>/`.
 
 `path` for `save_ld_cache` and `load_ld_cache` must contain `@`, replaced by
-the shard label. One cache file is written or read per reference shard or shard
-group.
+the shard label. One cache file is written or read per shard or shard group.
 
 Expected behavior:
 
@@ -249,6 +249,9 @@ Expected behavior:
   warn when they do not match the supplied reference. It must validate that all
   shards are internally consistent with their metadata, including matching
   `num_snp` and binary array lengths.
+- for `load_ld(ld_dir, reference, ...)`, every shard declared by the supplied
+  reference must be present under `ld_dir/<shard_label>/`; missing expected
+  shards are errors.
 - when a chromosome directory contains `metadata.json` with
   `object_type: "ld_shard_group"`, all listed sex-specific subdirectories are
   loaded and stored as a per-chromosome shard list; otherwise the directory is
@@ -258,7 +261,13 @@ Expected behavior:
 - caching saves and restores all shards for the panel (the full shard group for
   chrX, the single shard for autosomes); `chrX_default_sex` is stored in the
   cache and restored on load.
-- the cache is tied to the reference and is invalid if the reference changes.
+- `load_ld_cache` does not require a reference object and performs cache-internal
+  integrity validation only.
+- `load_ld_cache` and `LDPanel.select_shards` shard subsetting follow
+  [contigs-and-shards.md](contigs-and-shards.md).
+- the cache stores per-shard reference checksums so compatibility with a
+  `ReferencePanel` can be checked after load via
+  `ReferencePanel.is_object_compatible`.
 - Panel accessors are read-only and concatenate shard data in reference panel
   order.
 - `chrX_default_sex` defaults to `"combined"` when omitted.

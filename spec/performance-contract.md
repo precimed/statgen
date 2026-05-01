@@ -51,6 +51,10 @@ be used for routine type conversion or validation on the default path.
 Row-wise loops are allowed only under documented exceptions where vectorized
 operations cannot correctly express required semantics for a specific input.
 
+Suggested comment format for retained loops in hot paths:
+
+- `PERF: loop retained because ...; vectorization not used because ...`
+
 When using native table loaders for throughput, implementations MAY apply
 lighter per-field validation than fully manual parsers, as long as object-level
 contract checks and compatibility checks remain enforced.

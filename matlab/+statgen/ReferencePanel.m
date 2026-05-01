@@ -48,6 +48,22 @@ classdef ReferencePanel
             obj.shard_offsets = offsets;
         end
 
+        function out = select_shards(obj, shards)
+            available = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                available{i} = obj.shards{i}.label;
+            end
+            selected = statgen.ReferencePanel.validate_requested_shards_( ...
+                shards, available, 'ReferencePanel.select_shards');
+
+            out_shards = cell(numel(selected), 1);
+            for i = 1:numel(selected)
+                idx = find(strcmp(available, selected{i}), 1, 'first');
+                out_shards{i} = obj.shards{idx};
+            end
+            out = statgen.ReferencePanel(out_shards);
+        end
+
         function ok = is_object_compatible(obj, other)
             ok = true;
 
@@ -72,6 +88,22 @@ classdef ReferencePanel
                     os = other_shards{i};
                 catch
                     os = other_shards(i);
+                end
+
+                try
+                    os_label = os.label;
+                catch
+                    statgen.ReferencePanel.compat_warn_( ...
+                        'statgen: is_object_compatible: shard %s: object shard has no label', ...
+                        rs.label);
+                    ok = false; continue;
+                end
+
+                if ~strcmp(os_label, rs.label)
+                    statgen.ReferencePanel.compat_warn_( ...
+                        'statgen: is_object_compatible: shard label mismatch: ref=%s, obj=%s', ...
+                        rs.label, os_label);
+                    ok = false; continue;
                 end
 
                 try
@@ -106,6 +138,55 @@ classdef ReferencePanel
     end
 
     methods (Static, Access = private)
+        function selected = validate_requested_shards_(requested, available, where)
+            if nargin < 1 || isempty(requested)
+                selected = available;
+                return
+            end
+
+            if ischar(requested)
+                requested = {requested};
+            elseif isnumeric(requested)
+                error('statgen:shards', ...
+                    '%s: shards must be a non-empty list of unique canonical contig labels', ...
+                    where);
+            end
+
+            requested = requested(:)';
+            if isempty(requested)
+                error('statgen:shards', ...
+                    '%s: shards must be a non-empty list of unique canonical contig labels', ...
+                    where);
+            end
+
+            canonical = [arrayfun(@num2str, 1:22, 'UniformOutput', false), {'X'}];
+            canonical_idx = zeros(1, numel(requested));
+            seen = {};
+            for i = 1:numel(requested)
+                label = char(requested{i});
+                idx = find(strcmp(canonical, label), 1, 'first');
+                if isempty(idx)
+                    error('statgen:shards', ...
+                        '%s: unsupported shard label %s; expected canonical labels 1-22 or X', ...
+                        where, label);
+                end
+                if any(strcmp(seen, label))
+                    error('statgen:shards', '%s: duplicate shard label %s in shards', where, label);
+                end
+                if ~any(strcmp(available, label))
+                    error('statgen:shards', '%s: requested shard %s is not present', where, label);
+                end
+                seen{end+1} = label; %#ok<AGROW>
+                canonical_idx(i) = idx;
+            end
+
+            if any(diff(canonical_idx) <= 0)
+                error('statgen:shards', '%s: shards must be in canonical subsequence order', where);
+            end
+
+            selected = requested;
+        end
+
         function compat_warn_(fmt, varargin)
             msg = sprintf(fmt, varargin{:});
             warning('statgen:compat', '%s', msg);

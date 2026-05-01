@@ -98,10 +98,11 @@ follows the shard representation: `bool` or `uint8` for binary annotations.
 ```text
 load_annotations(bed_paths, reference) -> AnnotationPanel
 save_annotations_cache(panel, path)
-load_annotations_cache(path, reference) -> AnnotationPanel
+load_annotations_cache(path, optional shards) -> AnnotationPanel
 
 AnnotationPanel.annomat -> num_snp × num_annot binary matrix
 AnnotationPanel.annonames -> num_annot string vector
+AnnotationPanel.select_shards(shards) -> AnnotationPanel
 ```
 
 Expected behavior:
@@ -111,8 +112,14 @@ Expected behavior:
 - `reference` is required; the output shard structure matches the reference
   panel; `annomat` rows are aligned to the reference.
 - caching saves and restores the painted `annomat`; the cache is a single file
-  (non-sharded) and is tied to the reference.
+  (non-sharded). `load_annotations_cache` performs cache-internal validation
+  only and supports optional `shards` subsetting.
 - internal per-shard layout within the cache file is implementation-specific.
 - Accessors are read-only, concatenate shards in reference panel order, and
   return plain language-native matrices or vectors.
 - `annonames` must be identical across shards and is returned once.
+- `AnnotationPanel.select_shards` shard subsetting follows
+  [contigs-and-shards.md](contigs-and-shards.md).
+- cache payloads store per-shard reference checksums so compatibility with a
+  `ReferencePanel` can be checked after load via
+  `ReferencePanel.is_object_compatible`.

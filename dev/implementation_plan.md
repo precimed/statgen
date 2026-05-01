@@ -62,26 +62,46 @@ Implementation tasks:
 
 - implement BIM parsing and validation for required columns:
   `chr`, `snp`, `cm`, `bp`, `a1`, `a2`;
+- implement contig label validation per `spec/contigs-and-shards.md`:
+  silently ignore `Y`/`MT` rows on load; reject `chr1`/`chrX`-style labels
+  with a clear error;
+- implement allele syntax validation: both `a1` and `a2` must be non-empty
+  uppercase DNA strings; either allele may be multi-base; loaders preserve
+  values as-is without normalization;
+- loaders must never swap or reinterpret `a1`/`a2` roles and must not attempt
+  reference-genome truth validation for allele identity;
+- implement row-order validation per `spec/contigs-and-shards.md`: sort key is
+  `(chr_rank, bp_numeric, a1_lexicographic, a2_lexicographic)`; duplicate
+  `(chr, bp, a1, a2)` tuples must fail; violations must fail clearly without
+  reordering or deduplication;
 - implement reference checksum computation from exact loaded `chr:bp:a1:a2\n`
   rows with lowercase MD5 output;
 - implement Python `ReferenceShard` and `ReferencePanel` classes with
-  read-only accessors, shard offsets, and index conversion helpers;
+  read-only accessors and shard offsets;
 - implement MATLAB/Octave reference loading, checksum, and panel accessors;
-- implement `load_reference(path)` for:
-  - sharded path templates containing `@`;
+- implement `load_reference(path, shards=None)` for:
+  - sharded path templates containing `@` (canonical-label substitution, no glob);
   - single BIM split by chromosome;
-- implement reference cache save/load in both languages;
-- implement `ReferencePanel.is_object_compatible(object, strict=False)` as a
-  boolean compatibility check that may log warnings/errors but does not raise
-  on mismatches.
+  - optional `shards` subset per `spec/contigs-and-shards.md`;
+- implement `ReferencePanel.select_shards(shards)` returning a subset panel;
+- implement reference cache save/load in both languages; `load_reference_cache`
+  accepts optional `shards` for subsetting cached shard labels;
+- implement `ReferencePanel.is_object_compatible(object)` comparing ordered
+  shard labels, shard row counts, and shard checksums where available; may log
+  warnings but does not raise on mismatches.
 
 Tests and acceptance criteria:
 
 - Python and Octave return the same shard labels, row order, offsets, and
   checksums for all fixture reference layouts;
-- single-file loading splits by chromosome;
-- compatibility checks return `false` without raising for row-count or checksum
-  mismatches;
+- single-file loading splits by chromosome; sharded `@` loading uses canonical
+  substitution and excludes non-existent shards without error;
+- `Y`/`MT` rows are silently ignored; `chr1`-style labels raise a clear error;
+- sort-order violations and duplicate `(chr, bp, a1, a2)` tuples fail clearly;
+- `select_shards` and cache `shards` subsetting produce correct sub-panels;
+- `is_object_compatible` compares ordered shard labels, not just counts;
+- compatibility checks return `false` without raising for label, row-count, or
+  checksum mismatches;
 - chrX is supported without chromosome 1-22 hard-coding.
 
 ## Fixture sourcing policy for Phase 2+
@@ -123,7 +143,10 @@ Implementation tasks:
   - `p < 0` or `p > 1` -> `NaN`;
 - implement Python and MATLAB/Octave accessors for genome-wide concatenated
   vectors;
-- implement aligned cache save/load tied to reference checksums.
+- implement `Sumstats.select_shards(shards)` returning a subset object;
+- implement cache save/load: `load_sumstats_cache(path, shards=None)` performs
+  cache-internal validation only, supports optional `shards` subsetting, and
+  retains per-shard checksums for explicit post-load compatibility checks.
 
 Tests and acceptance criteria:
 
@@ -131,7 +154,8 @@ Tests and acceptance criteria:
 - absent reference variants remain rows with `NaN`, not dropped rows;
 - optional fields have consistent missing-field sentinels;
 - malformed TSV files with missing required columns fail with clear errors;
-- cache loading detects incompatible references.
+- post-load compatibility checks via `ReferencePanel.is_object_compatible`
+  detect incompatible references.
 
 ## Phase 3: annotation painting
 
@@ -147,8 +171,12 @@ Implementation tasks:
 - derive annotation names from BED filenames;
 - implement Python `AnnotationShard` and `AnnotationPanel` classes with
   `annomat` and `annonames` accessors;
+- implement `AnnotationPanel.select_shards(shards)` returning a subset panel;
 - implement MATLAB/Octave annotation painting with matching semantics;
-- implement annotation cache save/load tied to reference checksums.
+- implement cache save/load: `load_annotations_cache(path, shards=None)` does
+  not require a reference object; performs cache-internal validation only and
+  supports optional `shards` subsetting; stores per-shard checksums for
+  post-load compatibility checking via `ReferencePanel.is_object_compatible`.
 
 Tests and acceptance criteria:
 
@@ -157,6 +185,8 @@ Tests and acceptance criteria:
 - chromosomes absent from a BED file produce all-zero masks;
 - Python and Octave `annomat` and `annonames` match for sharded and one-shard
   reference layouts;
+- post-load compatibility checks via `ReferencePanel.is_object_compatible`
+  detect incompatible references for annotation caches;
 - complement masks and LD-weighted matrices are left to user-space arrays.
 
 ## Phase 4: LD portable loader and numerical primitives
@@ -180,12 +210,15 @@ Implementation tasks:
 - implement `LDPanel.mafvec(sex=None)` with chrX default-sex selection;
 - implement `LDPanel.multiply_r2(M, sex=None)` without building a dense
   genome-wide LD matrix;
+- implement `LDPanel.select_shards(shards)` returning a subset panel;
 - implement `fast_prune(logpvec, ld_panel, r2_threshold=0.2, sex=None)` with
   stable significance ordering and per-shard pruning;
-- implement LD cache save/load in both languages, preserving chrX sex shards
-  and following the cache path-template convention: `@` is replaced by the
-  reference shard label, and `#` is replaced by the chrX sex label when
-  sex-specific cache files are used; autosomal cache paths omit the sex label.
+- implement LD cache save/load in both languages: `load_ld_cache(path,
+  shards=None, chrX_default_sex=None)` does not require a reference object;
+  performs cache-internal validation only; supports optional `shards`
+  subsetting; stores per-shard checksums for post-load compatibility checking;
+  cache path-template convention: `@` replaced by shard label, `#` by chrX
+  sex label; autosomal cache paths omit the sex label.
 
 Tests and acceptance criteria:
 
@@ -234,7 +267,12 @@ Implementation tasks:
 
 - implement `GenotypeShard` and `GenotypePanel` loaders for PLINK bfile
   prefixes;
-- support single-prefix input and ordered lists/templates of sharded prefixes;
+- support single-prefix input and `@`-template sharded prefixes; shard
+  discovery uses canonical-label substitution (no glob), per
+  `spec/contigs-and-shards.md`;
+- implement `load_genotype(path_or_paths, shards=None)` with optional `shards`
+  subsetting;
+- implement `GenotypePanel.select_shards(shards)` returning a subset panel;
 - validate `.bed`, `.bim`, and `.fam` presence;
 - load BIM and FAM metadata, retaining file paths and sample order;
 - for sharded genotype panels, require identical FAM rows in the same order

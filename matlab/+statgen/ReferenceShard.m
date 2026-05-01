@@ -22,13 +22,10 @@ classdef ReferenceShard
             obj.a1      = a1_vec(:);
             obj.a2      = a2_vec(:);
             % MD5 over 'chr:bp:a1:a2\n' lines in row order
-            n = obj.num_snp;
-            parts = cell(n, 1);
-            for i = 1:n
-                parts{i} = sprintf('%s:%d:%s:%s\n', ...
-                    char(chr_vec{i}), round(bp_vec(i)), char(a1_vec{i}), char(a2_vec{i}));
-            end
-            obj.checksum = hash('md5', strjoin(parts, ''));
+            bp_str = cellstr(num2str(round(obj.bp), '%d'));
+            parts = strcat(obj.chr, {':'}, bp_str, {':'}, obj.a1, {':'}, obj.a2, {sprintf('\n')});
+            computed = hash('md5', [parts{:}]);
+            obj.checksum = computed;
         end
     end
 end

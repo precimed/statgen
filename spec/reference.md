@@ -11,8 +11,9 @@ the input contract in [conventions.md](conventions.md):
   contig naming mode, normally NCBI labels such as `1`-`22` and `X`;
 - `snp`: SNP identifier;
 - `bp`: base-pair position;
-- `a1`, `a2`: ordered alleles; `a1` is the non-reference allele, `a2` is the
-  reference allele.
+- `a1`, `a2`: ordered alleles under the allele contract in
+  [conventions.md](conventions.md); `a1` is the non-reference allele, `a2` is
+  the reference allele.
 
 Optional columns include `source` and `variant_id`.
 
@@ -29,10 +30,8 @@ compatibility and then ignored by `statgen`.
 
 A reference panel may be sharded or non-sharded on disk:
 
-- **Sharded**: one `.bim` file per chromosome, addressed via an `@` placeholder
-  in the path (e.g. `chr@.bim` expands to `chr1.bim`, `chr2.bim`, …, `chrX.bim`).
-  Canonical chromosome order is 1–22, X. A chromosome subset such as chr20–22
-  is represented by those shard files only.
+- **Sharded**: one `.bim` file per chromosome via an `@` placeholder in the
+  path (e.g. `chr@.bim`).
 - **Non-sharded**: a single `.bim` file spanning all chromosomes.
 
 Shard row order defines shard-local SNP indices. Panel row order defines global
@@ -59,9 +58,9 @@ zero-based shard offsets for compatibility with portable metadata.
 ## API
 
 ```text
-load_reference(path) -> ReferencePanel
+load_reference(path, optional shards) -> ReferencePanel
 save_reference_cache(panel, path)
-load_reference_cache(path) -> ReferencePanel
+load_reference_cache(path, optional shards) -> ReferencePanel
 
 ReferencePanel.num_snp -> int
 ReferencePanel.chr -> num_snp chromosome-label vector
@@ -70,34 +69,20 @@ ReferencePanel.bp  -> num_snp integer vector
 ReferencePanel.a1  -> num_snp string vector
 ReferencePanel.a2  -> num_snp string vector
 ReferencePanel.shard_offsets -> table with shard_label, start0, stop0
+ReferencePanel.select_shards(shards) -> ReferencePanel
 ReferencePanel.is_object_compatible(object) -> bool
 ```
 
 Expected behavior:
 
-- Reference panels are external inputs; statgen never writes `.bim` files.
+- Reference panels are external inputs; `statgen` never writes `.bim` files.
 - Cache is a single file (non-sharded); internal layout is implementation-specific.
-- If `path` contains `@`: sharded input; discover all matching `.bim` files and
-  load each as one chromosome shard, sorted in canonical order.
-- If `path` is a single file: split by the `chr` column into per-chromosome
-  shards.
-- Preserve row order and validate required columns.
-- Source reference rows MUST already be sorted by canonical chromosome order
-  (`1`-`22`, `X`) and then by ascending `bp` within chromosome.
-- `load_reference` MUST validate this ordering and fail clearly on violations.
-  It MUST NOT silently reorder rows.
+- Shard discovery, contig validation, row-order validation, and shard subsetting
+  follow [contigs-and-shards.md](contigs-and-shards.md).
 - Compute and retain each shard reference checksum.
-- Assume the upstream allele contract has already been satisfied; loaders
-  validate syntax and preserve allele order, but `.bim` alone is not sufficient
-  to prove reference/alternate allele truth.
 - Accessors are read-only, concatenate shard columns in reference panel order,
   and return plain language-native vectors or tables.
 - `shard_offsets` uses zero-based half-open intervals into genome-wide arrays.
-- `is_object_compatible` checks one loaded statgen object against this
-  reference panel by comparing shard counts, row counts, and stored shard
-  checksums where available. It returns `true` when compatible and `false`
-  otherwise. Compatibility mismatches are logged as warnings, do not raise
-  exceptions, and callers branch on the returned boolean.
-- `load_reference_cache` assumes cache payloads were validated at cache
-  creation time and should not re-run full source-style row validation (for
-  example per-row parsing/sort-order checks) on the default load path.
+- `load_reference_cache` skips source-style row validation; `shards` subsetting
+  applies against cached shard labels per
+  [contigs-and-shards.md](contigs-and-shards.md).

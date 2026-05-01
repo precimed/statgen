@@ -25,6 +25,8 @@ Required columns:
 - `z`
 - `n`
 
+Allele-column contract follows [conventions.md](conventions.md).
+
 `z` is required. Files that provide only `beta` and `se` must be converted
 upstream before loading into `statgen`.
 
@@ -98,7 +100,7 @@ language-specific sentinel defined in [SPEC.md](SPEC.md).
 ```text
 load_sumstats(path, reference) -> Sumstats
 save_sumstats_cache(sumstats, path)
-load_sumstats_cache(path, reference) -> Sumstats
+load_sumstats_cache(path, optional shards) -> Sumstats
 
 Sumstats.zvec -> num_snp float vector
 Sumstats.nvec -> num_snp float vector
@@ -107,6 +109,7 @@ Sumstats.beta_vec -> num_snp float vector, or missing optional field sentinel
 Sumstats.se_vec -> num_snp float vector, or missing optional field sentinel
 Sumstats.eaf_vec -> num_snp float vector, or missing optional field sentinel
 Sumstats.info_vec -> num_snp float vector, or missing optional field sentinel
+Sumstats.select_shards(shards) -> Sumstats
 ```
 
 Expected behavior:
@@ -115,6 +118,8 @@ Expected behavior:
 - `chr:bp:a1:a2` joins are exact after basic field parsing; the loader does not
   normalize chromosome labels, swap alleles, or perform strand handling.
 - cache is a single file (non-sharded); internal per-shard layout is implementation-specific.
+- `load_sumstats_cache` performs cache-internal validation only and supports
+  optional `shards` subsetting.
 - missing variants are represented as `NaN` or masks; row order matches the
   reference panel.
 - `logpvec` is derived only from an optional `p` column as `-log10(p)`.
@@ -124,3 +129,8 @@ Expected behavior:
   present and otherwise omitted or filled with `NaN` in aligned caches.
 - Accessors are read-only, concatenate shards in reference panel order, and
   return plain language-native vectors.
+- `Sumstats.select_shards` shard subsetting follows
+  [contigs-and-shards.md](contigs-and-shards.md).
+- cache payloads store per-shard reference checksums so compatibility with a
+  `ReferencePanel` can be checked after load via
+  `ReferencePanel.is_object_compatible`.
