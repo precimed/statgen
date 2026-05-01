@@ -2,9 +2,10 @@
 
 ## Compatibility target
 
-All MATLAB/Octave code must run under Octave (current stable release). MATLAB
-compatibility is desirable but secondary; when the two differ, Octave behavior
-takes precedence.
+The MATLAB implementation is the primary runtime contract. Octave is used as a
+unit-test harness and compatibility proxy, not as the normative behavior
+source. When MATLAB and Octave differ, implementation behavior is defined by
+MATLAB semantics unless explicitly documented otherwise.
 
 ## Package layout
 
@@ -95,3 +96,19 @@ all user-facing validation failures. Do not use `assert` for input validation.
 
 Compatibility checks log via `warning('statgen:compat', ...)` for mismatches.
 They return a scalar logical and do not throw.
+
+## Runtime compatibility guardrails
+
+- For BIM/TSV-like source inputs, native table readers must use explicit text
+  schema for mixed-label columns (for example `chr`) rather than auto-inference.
+  This avoids label coercion (for example `X` becoming `NaN`) and preserves
+  input-contract semantics.
+- Use `fprintf` for formatted output in shared runtime/test snippets intended
+  to execute under MATLAB. Octave-only output helpers (for example `printf`)
+  must be wrapped or normalized at the harness boundary.
+- Cross-runtime differences must be isolated in boundary helper functions
+  (I/O parsing, hashing, output formatting, engine/session integration), not
+  duplicated across core loader/object logic.
+- Test execution may use one persistent MATLAB engine session per pytest run.
+  MATLAB-facing code and test harness paths must not assume process-per-call
+  isolation.
