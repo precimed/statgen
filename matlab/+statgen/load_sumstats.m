@@ -145,15 +145,6 @@ function [tbl, cleanup_fn] = parse_sumstats_table_(path)
         cleanup_fn = @() cleanup_tmpdir_(tmpdir);
     end
 
-    if exist('readtable', 'file') == 2
-        tbl = readtable(actual_path, ...
-            'FileType', 'text', ...
-            'Delimiter', '\t', ...
-            'ReadVariableNames', true, ...
-            'TextType', 'char');
-        return
-    end
-
     fid = fopen(actual_path, 'r');
     if fid < 0
         error('statgen:io', 'Cannot open sumstats file: %s', path);
