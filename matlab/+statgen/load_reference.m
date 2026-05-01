@@ -23,7 +23,7 @@ end
 % ---------------------------------------------------------------------------
 
 function panel = load_sharded_(path, requested_shards)
-    canonical = canonical_labels_();
+    canonical = statgen.canonical_labels();
     available_labels = {};
     available_paths = {};
     for i = 1:numel(canonical)
@@ -39,7 +39,7 @@ function panel = load_sharded_(path, requested_shards)
         error('statgen:io', 'No BIM shards found matching template: %s', path);
     end
 
-    selected = validate_requested_shards_(requested_shards, available_labels, 'load_reference');
+    selected = statgen.validate_requested_shards(requested_shards, available_labels, 'load_reference');
     shards = cell(numel(selected), 1);
     for i = 1:numel(selected)
         label = selected{i};
@@ -51,7 +51,7 @@ function panel = load_sharded_(path, requested_shards)
 end
 
 function panel = load_split_by_chr_(bim, requested_shards)
-    canonical = canonical_labels_();
+    canonical = statgen.canonical_labels();
     available = {};
     for i = 1:numel(canonical)
         c = canonical{i};
@@ -60,7 +60,7 @@ function panel = load_split_by_chr_(bim, requested_shards)
         end
     end
 
-    selected = validate_requested_shards_(requested_shards, available, 'load_reference');
+    selected = statgen.validate_requested_shards(requested_shards, available, 'load_reference');
     shards = cell(numel(selected), 1);
     for ci = 1:numel(selected)
         c = selected{ci};
@@ -100,7 +100,7 @@ function bim = parse_bim_(path)
         error('statgen:bim', '%s:%d: chr-style labels (e.g., chr1/chrX) are not allowed', path, lineno);
     end
 
-    canonical = canonical_labels_();
+    canonical = statgen.canonical_labels();
     known = ismember(chr_out, canonical) | ismember(chr_out, {'Y', 'MT'});
     if ~all(known)
         lineno = find(~known, 1, 'first');
@@ -159,7 +159,7 @@ function validate_reference_sort_order_(chr_col, bp_col, a1_col, a2_col, path, l
         return
     end
 
-    canonical = canonical_labels_();
+    canonical = statgen.canonical_labels();
     [is_ok_chr, chr_rank] = ismember(chr_col, canonical);
     bad_chr = ~is_ok_chr;
     if any(bad_chr)
@@ -202,55 +202,6 @@ function validate_reference_sort_order_(chr_col, bp_col, a1_col, a2_col, path, l
     end
 end
 
-function labels = canonical_labels_()
-    labels = [arrayfun(@num2str, 1:22, 'UniformOutput', false), {'X'}];
-end
-
-function selected = validate_requested_shards_(requested, available, where)
-    if nargin < 1 || isempty(requested)
-        selected = available;
-        return
-    end
-
-    if ischar(requested)
-        requested = {requested};
-    elseif isnumeric(requested)
-        error('statgen:shards', '%s: shards must be a non-empty list of unique canonical contig labels', where);
-    end
-
-    requested = requested(:)';
-    if isempty(requested)
-        error('statgen:shards', '%s: shards must be a non-empty list of unique canonical contig labels', where);
-    end
-
-    canonical = canonical_labels_();
-    canonical_idx = zeros(1, numel(requested));
-    seen = {};
-    for i = 1:numel(requested)
-        label = char(requested{i});
-        idx = find(strcmp(canonical, label), 1, 'first');
-        if isempty(idx)
-            error('statgen:shards', ...
-                '%s: unsupported shard label %s; expected canonical labels 1-22 or X', ...
-                where, label);
-        end
-        if any(strcmp(seen, label))
-            error('statgen:shards', '%s: duplicate shard label %s in shards', where, label);
-        end
-        if ~any(strcmp(available, label))
-            error('statgen:shards', '%s: requested shard %s is not present', where, label);
-        end
-        seen{end+1} = label; %#ok<AGROW>
-        canonical_idx(i) = idx;
-    end
-
-    if any(diff(canonical_idx) <= 0)
-        error('statgen:shards', '%s: shards must be in canonical subsequence order', where);
-    end
-
-    selected = requested;
-end
-
 function [cols, n_rows] = read_bim_tabular_(path)
     if exist('readtable', 'file') == 2
         tbl = readtable(path, ...
@@ -268,7 +219,7 @@ function [cols, n_rows] = read_bim_tabular_(path)
         n_rows = height(tbl);
         cols = cell(1, 6);
         for c = 1:6
-            cols{c} = ensure_cellstr_col_(tbl{:, c});
+            cols{c} = statgen.ensure_cell_col(tbl{:, c});
         end
         return
     end
@@ -289,21 +240,7 @@ function [cols, n_rows] = read_bim_tabular_(path)
 
     cols = cell(1, 6);
     for c = 1:6
-        cols{c} = ensure_cellstr_col_(raw_cols{c});
+        cols{c} = statgen.ensure_cell_col(raw_cols{c});
     end
     n_rows = numel(cols{1});
-end
-
-function out = ensure_cellstr_col_(x)
-    if iscell(x)
-        out = x(:);
-    elseif isstring(x)
-        out = cellstr(x(:));
-    elseif ischar(x)
-        out = strtrim(cellstr(x));
-    elseif isnumeric(x) || islogical(x)
-        out = arrayfun(@(v) num2str(v, '%.15g'), x(:), 'UniformOutput', false);
-    else
-        out = strtrim(cellstr(x));
-    end
 end

@@ -133,6 +133,8 @@ order.
 Implementation tasks:
 
 - implement required-column validation for `chr`, `bp`, `a1`, `a2`, `z`, `n`;
+- enforce required numeric-field validity: `z` and `n` must parse as finite
+  numbers on all source rows; invalid, `NaN`, or infinite values fail load;
 - implement optional field handling for `p`, `beta`, `se`, `eaf`, and `info`;
 - join rows to the reference by exact `chr:bp:a1:a2`;
 - split aligned vectors into `SumstatsShard`s matching the reference shards;
@@ -154,6 +156,8 @@ Tests and acceptance criteria:
 - absent reference variants remain rows with `NaN`, not dropped rows;
 - optional fields have consistent missing-field sentinels;
 - malformed TSV files with missing required columns fail with clear errors;
+- malformed TSV files with non-finite/non-numeric required `z` or `n` fail with
+  clear errors;
 - post-load compatibility checks via `ReferencePanel.is_object_compatible`
   detect incompatible references.
 

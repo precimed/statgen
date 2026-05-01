@@ -8,43 +8,14 @@ import numpy as np
 import pandas as pd
 from pandas.errors import ParserError
 
+from ._utils import CANONICAL_CHR_ORDER, CHR_RANK, validate_requested_shards
+
 logger = logging.getLogger(__name__)
 
 _CACHE_SCHEMA = "reference_cache/0.1"
 _BIM_NCOLS = 6
-_CANONICAL_CHR_ORDER = [str(i) for i in range(1, 23)] + ["X"]
-_CHR_RANK = {c: i for i, c in enumerate(_CANONICAL_CHR_ORDER)}
 _IGNORED_CHR = {"Y", "MT"}
 _DNA_ALLELE_RE = re.compile(r"^[ACGT]+$")
-
-
-def _validate_requested_shards(shards, available_labels, where: str) -> list[str]:
-    labels = list(available_labels)
-    if shards is None:
-        return labels
-
-    if isinstance(shards, str):
-        raise ValueError(f"{where}: shards must be a non-empty list of unique canonical contig labels")
-
-    requested = list(shards)
-    if not requested:
-        raise ValueError(f"{where}: shards must be a non-empty list of unique canonical contig labels")
-
-    seen = set()
-    prev_rank = None
-    for label in requested:
-        if label not in _CHR_RANK:
-            raise ValueError(f"{where}: unsupported shard label {label!r}; expected canonical labels 1-22 or X")
-        if label in seen:
-            raise ValueError(f"{where}: duplicate shard label {label!r} in shards")
-        rank = _CHR_RANK[label]
-        if prev_rank is not None and rank <= prev_rank:
-            raise ValueError(f"{where}: shards must be in canonical subsequence order")
-        seen.add(label)
-        prev_rank = rank
-        if label not in labels:
-            raise ValueError(f"{where}: requested shard {label!r} is not present")
-    return requested
 
 
 def _validate_reference_sort_order(
@@ -55,7 +26,7 @@ def _validate_reference_sort_order(
     line_numbers: np.ndarray,
     path: Path,
 ) -> None:
-    chr_rank = chr_col.map(_CHR_RANK)
+    chr_rank = chr_col.map(CHR_RANK)
     bad_chr = chr_rank.isna()
     if bad_chr.any():
         idx = int(bad_chr.idxmax())
@@ -147,7 +118,7 @@ def _parse_bim(path: Path) -> pd.DataFrame:
         idx = int(chr_style.idxmax())
         raise ValueError(f"{path}:{idx + 1}: chr-style labels (e.g., chr1/chrX) are not allowed")
 
-    known_chr = chr_col.isin(_CANONICAL_CHR_ORDER) | chr_col.isin(_IGNORED_CHR)
+    known_chr = chr_col.isin(CANONICAL_CHR_ORDER) | chr_col.isin(_IGNORED_CHR)
     if not known_chr.all():
         idx = int((~known_chr).idxmax())
         raise ValueError(
@@ -189,7 +160,7 @@ def _parse_bim(path: Path) -> pd.DataFrame:
         )
 
     bp_int = bp_num.astype(np.int64)
-    keep = chr_col.isin(_CANONICAL_CHR_ORDER)
+    keep = chr_col.isin(CANONICAL_CHR_ORDER)
     chr_kept = chr_col[keep]
     bp_kept = bp_int[keep]
     a1_kept = a1_col[keep]
@@ -352,7 +323,7 @@ class ReferencePanel:
 
     def select_shards(self, shards) -> "ReferencePanel":
         available = [s.label for s in self._shards]
-        selected = _validate_requested_shards(shards, available, "ReferencePanel.select_shards")
+        selected = validate_requested_shards(shards, available, "ReferencePanel.select_shards")
         by_label = {s.label: s for s in self._shards}
         return ReferencePanel([by_label[label] for label in selected])
 
@@ -419,7 +390,7 @@ def load_reference(path, shards=None) -> ReferencePanel:
     if "@" in path_str:
         available_labels = []
         available_paths = {}
-        for label in _CANONICAL_CHR_ORDER:
+        for label in CANONICAL_CHR_ORDER:
             candidate = Path(path_str.replace("@", label))
             if candidate.is_file():
                 available_labels.append(label)
@@ -430,7 +401,7 @@ def load_reference(path, shards=None) -> ReferencePanel:
                 f"No BIM shards found matching template: {path_str}"
             )
 
-        selected = _validate_requested_shards(
+        selected = validate_requested_shards(
             shards, available_labels, "load_reference"
         )
         shards = []
@@ -451,9 +422,9 @@ def load_reference(path, shards=None) -> ReferencePanel:
     bim_df = _parse_bim(path_obj)
 
     available_labels = [
-        c for c in _CANONICAL_CHR_ORDER if (bim_df["chr"] == c).any()
+        c for c in CANONICAL_CHR_ORDER if (bim_df["chr"] == c).any()
     ]
-    selected = _validate_requested_shards(shards, available_labels, "load_reference")
+    selected = validate_requested_shards(shards, available_labels, "load_reference")
     out_shards = []
     for c in selected:
         shard_df = bim_df.loc[bim_df["chr"] == c]
@@ -503,7 +474,7 @@ def load_reference_cache(path, shards=None) -> ReferencePanel:
         checksums = list(meta.get("shard_checksums", []))
         if len(labels) != len(checksums):
             raise ValueError("Invalid reference cache: shard_labels and shard_checksums length mismatch")
-        selected = _validate_requested_shards(shards, labels, "load_reference_cache")
+        selected = validate_requested_shards(shards, labels, "load_reference_cache")
         label_to_index = {label: i for i, label in enumerate(labels)}
 
         shard_objs = []

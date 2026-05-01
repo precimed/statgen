@@ -45,10 +45,6 @@ against a `ReferencePanel` projects rows into reference order using
 from the TSV as missing values. The loader does not normalize or alias contig
 labels; sumstats `chr` values must already match the reference labels.
 
-The input contract requires no duplicate `chr:bp:a1:a2` keys. Loaders are not
-required to validate or resolve duplicate keys; behavior is undefined when this
-contract is violated.
-
 ## In-memory objects
 
 A `SumstatsShard` is aligned to one `ReferenceShard`; a `Sumstats` object is an
@@ -117,6 +113,9 @@ Expected behavior:
 - `reference` is required; rows are projected into reference order on load.
 - `chr:bp:a1:a2` joins are exact after basic field parsing; the loader does not
   normalize chromosome labels, swap alleles, or perform strand handling.
+- required numeric fields `z` and `n` must parse as finite numeric values for
+  all source rows; non-numeric, `NaN`, or infinite values are validation
+  errors and must fail load with a clear message.
 - cache is a single file (non-sharded); internal per-shard layout is implementation-specific.
 - `load_sumstats_cache` performs cache-internal validation only and supports
   optional `shards` subsetting.
@@ -125,12 +124,17 @@ Expected behavior:
 - `logpvec` is derived only from an optional `p` column as `-log10(p)`.
   Missing `p` values yield `NaN`; by convention, `p == 0` yields `Inf`;
   `p < 0` or `p > 1` yields `NaN`.
-- optional vectors are loaded when the corresponding source columns are
-  present and otherwise omitted or filled with `NaN` in aligned caches.
+- for each optional field (`beta_vec`, `se_vec`, `eaf_vec`, `info_vec`):
+  when the source column is present, the accessor returns a full aligned vector
+  with `NaN` for missing or unmatched rows; when the source column is absent,
+  the accessor returns the language-specific missing optional-field sentinel
+  from [SPEC.md](SPEC.md) (`None` in Python, `[]` in MATLAB/Octave).
+- cache save/load must preserve the same optional-field semantics (field absent
+  remains absent; field present remains a vector).
 - Accessors are read-only, concatenate shards in reference panel order, and
   return plain language-native vectors.
 - `Sumstats.select_shards` shard subsetting follows
   [contigs-and-shards.md](contigs-and-shards.md).
-- cache payloads store per-shard reference checksums so compatibility with a
-  `ReferencePanel` can be checked after load via
-  `ReferencePanel.is_object_compatible`.
+- cache payloads store per-shard reference checksums for compatibility checks
+  under the general reference-compatibility contract in
+  [conventions.md](conventions.md).
