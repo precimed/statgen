@@ -1,25 +1,17 @@
-function panel = load_reference(path, no_shard)
+function panel = load_reference(path)
 % Load a reference panel from a .bim file or sharded .bim template.
 %
 %   panel = statgen.load_reference(path)
-%   panel = statgen.load_reference(path, no_shard)
 %
 % If path contains '@', it is a sharded template (e.g. 'chr@.bim').
-% Otherwise path is a single file split by chr column (no_shard=false)
-% or loaded as one 'all' shard (no_shard=true).
-    if nargin < 2, no_shard = false; end
+% Otherwise path is a single file split by chr column into per-chromosome shards.
     path = char(path);
 
     if ~isempty(strfind(path, '@'))
         panel = load_sharded_(path);
     else
         bim = parse_bim_(path);
-        if no_shard
-            shard = statgen.ReferenceShard('all', bim.chr, bim.snp, bim.bp, bim.a1, bim.a2);
-            panel = statgen.ReferencePanel({shard});
-        else
-            panel = load_split_by_chr_(bim);
-        end
+        panel = load_split_by_chr_(bim);
     end
 end
 

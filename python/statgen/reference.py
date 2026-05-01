@@ -268,7 +268,7 @@ class ReferencePanel:
         return ok
 
 
-def load_reference(path, no_shard: bool = False) -> ReferencePanel:
+def load_reference(path) -> ReferencePanel:
     path_str = str(path)
     path_obj = Path(path_str)
 
@@ -309,9 +309,6 @@ def load_reference(path, no_shard: bool = False) -> ReferencePanel:
         return ReferencePanel(shards)
 
     rows = _parse_bim(path_obj)
-
-    if no_shard:
-        return ReferencePanel([ReferenceShard("all", rows)])
 
     by_chr: dict = {}
     for r in rows:

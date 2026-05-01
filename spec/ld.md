@@ -4,10 +4,8 @@
 
 LD describes the pairwise signed correlation structure between variants in the
 same processed shard. Values are signed correlation `r`, not `r²`; consumers
-that need `r²` compute it after loading. Cross-chromosome LD is not stored;
-when a deliberately non-sharded reference spans multiple chromosomes, omitted
-cross-chromosome entries are interpreted as zero. Signs are oriented to `a1`
-dosages, consistent with the allele contract in
+that need `r²` compute it after loading. Cross-chromosome LD is not stored.
+Signs are oriented to `a1` dosages, consistent with the allele contract in
 [conventions.md](conventions.md).
 
 LD is paired with a reference: row and column order, SNP count, and the
@@ -125,9 +123,7 @@ byteswap on big-endian platforms rather than silently reading native-endian raw
 arrays.
 
 An `LDPanel` is stored as an ordered collection of LD shard directories
-(plain or shard-group). Non-sharded use is represented as a panel whose shard
-vector has length 1; the single shard may span multiple chromosomes only when
-the paired reference is also a single non-sharded shard.
+(plain or shard-group).
 
 ## Building an LD panel
 
@@ -137,13 +133,8 @@ input layouts:
 - **Sharded bfile input** (`@` in path, e.g. `chr@`): one bfile per
   chromosome; each chromosome is processed independently and produces one shard
   directory.
-- **Non-sharded bfile input** (single path, no `@`): by default the script
-  splits by chromosome and produces one shard directory per chromosome.
-  Pass `--no-shard` to produce a single non-sharded LD output. In this mode,
-  the script still computes PLINK LD separately per chromosome and concatenates
-  the resulting within-chromosome matrices into one shard. Cross-chromosome
-  pairs are not stored and are interpreted as zero. The single output shard
-  label is `"all"`.
+- **Non-sharded bfile input** (single path, no `@`): the script splits by
+  chromosome and produces one shard directory per chromosome.
 
 For each processed unit (chromosome shard, or chromosome extracted from a
 non-sharded bfile) the steps are:
@@ -166,12 +157,7 @@ metadata and must be recorded in `metadata.json`. Do not construct the binary
 files by hand.
 
 The sharding of the resulting LD panel must match the sharding of the reference
-used with it. Passing `--no-shard` implies that `load_reference` was also
-called with `no_shard=True` for the same bfile, so both the reference and LD
-panels use the single shard label `"all"`.
-
-For `--no-shard`, `statgen_build_ld.py` may require BIM SNP IDs to be unique so
-that SNP pairs in PLINK `--r` output can be mapped back to rows unambiguously.
+used with it.
 
 ### chrX sex-specific build
 
@@ -195,10 +181,8 @@ regardless of `--no-sex-split`.
 ## In-memory objects
 
 An `LDShard` holds the upper-triangle triplets for one specific LD matrix and
-the associated `mafvec`. In sharded chromosome-based panels, each `LDShard` is
-unambiguously identified by its `(chr, sex)` pair. In non-sharded panels, the
-single shard may have a multi-chromosome label matching the paired one-shard
-reference.
+the associated `mafvec`. Each `LDShard` is unambiguously identified by its
+`(chr, sex)` pair.
 
 An `LDPanel` is an ordered collection of shard lists matching the paired
 reference panel. For autosomal chromosome shards, each chromosome has exactly
@@ -251,14 +235,13 @@ fast_prune(logpvec, ld_panel, optional r2_threshold, optional sex) -> logpvec
 ```
 
 `ld_dir` may identify a panel root containing one or more shard directories, or
-a single shard directory for one-shard/non-sharded use. For a panel root,
-`load_ld` derives expected shard directories from the supplied reference shard
-labels and loads `ld_dir/<shard_label>/`; for `no_shard=True`, this is
-`ld_dir/all/`.
+a single shard directory. For a panel root, `load_ld` derives expected shard
+directories from the supplied reference shard labels and loads
+`ld_dir/<shard_label>/`.
 
 `path` for `save_ld_cache` and `load_ld_cache` must contain `@`, replaced by
 the shard label. One cache file is written or read per reference shard or shard
-group. For a single-shard non-sharded `LDPanel`, `@` is replaced by `"all"`.
+group.
 
 Expected behavior:
 

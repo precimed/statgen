@@ -26,9 +26,8 @@ genotypes/chrN.bim
 genotypes/chrN.fam
 ```
 
-A non-sharded single PLINK triplet covering all chromosomes is also an
-acceptable disk representation. In that case the full bfile is loaded as a
-single-shard `GenotypeShard` unless the caller explicitly splits by chromosome.
+A non-sharded single PLINK triplet combined across chromosomes is also an
+acceptable disk representation.
 
 Converted dense genotype matrices are caches only.
 

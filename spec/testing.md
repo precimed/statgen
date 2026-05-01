@@ -110,7 +110,7 @@ Tests should also cover:
 - cache invalidation when a supplied reference has different shard checksums;
 - little-endian LD triplet loading and binary array length validation;
 - chrX LD shard groups, including sex-specific default selection;
-- sharded versus one-shard/non-sharded loading behavior;
+- sharded (`@` template) versus single-file loading behavior;
 - malformed source files with missing required columns;
 - summary-statistic `p` handling for missing values, `0`, negative values, and
   values greater than `1`;

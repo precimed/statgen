@@ -59,7 +59,7 @@ zero-based shard offsets for compatibility with portable metadata.
 ## API
 
 ```text
-load_reference(path, no_shard=False) -> ReferencePanel
+load_reference(path) -> ReferencePanel
 save_reference_cache(panel, path)
 load_reference_cache(path) -> ReferencePanel
 
@@ -77,12 +77,10 @@ Expected behavior:
 
 - Reference panels are external inputs; statgen never writes `.bim` files.
 - Cache is a single file (non-sharded); internal layout is implementation-specific.
-- If `path` contains `@`: sharded input; one `.bim` per chromosome; `no_shard`
-  is ignored.
-- If `path` is a single file and `no_shard=False` (default): split by the `chr`
-  column into per-chromosome shards.
-- If `path` is a single file and `no_shard=True`: load as a single shard
-  spanning all chromosomes, with shard label `"all"`.
+- If `path` contains `@`: sharded input; discover all matching `.bim` files and
+  load each as one chromosome shard, sorted in canonical order.
+- If `path` is a single file: split by the `chr` column into per-chromosome
+  shards.
 - Preserve row order and validate required columns.
 - Source reference rows MUST already be sorted by canonical chromosome order
   (`1`-`22`, `X`) and then by ascending `bp` within chromosome.

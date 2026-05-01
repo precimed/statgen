@@ -67,10 +67,9 @@ Implementation tasks:
 - implement Python `ReferenceShard` and `ReferencePanel` classes with
   read-only accessors, shard offsets, and index conversion helpers;
 - implement MATLAB/Octave reference loading, checksum, and panel accessors;
-- implement `load_reference(path, no_shard=False)` for:
+- implement `load_reference(path)` for:
   - sharded path templates containing `@`;
   - single BIM split by chromosome;
-  - single BIM as one `"all"` shard when `no_shard=True`;
 - implement reference cache save/load in both languages;
 - implement `ReferencePanel.is_object_compatible(object, strict=False)` as a
   boolean compatibility check that may log warnings/errors but does not raise
@@ -80,8 +79,7 @@ Tests and acceptance criteria:
 
 - Python and Octave return the same shard labels, row order, offsets, and
   checksums for all fixture reference layouts;
-- single-file default loading splits by chromosome, while `no_shard=True`
-  preserves one `"all"` shard;
+- single-file loading splits by chromosome;
 - compatibility checks return `false` without raising for row-count or checksum
   mismatches;
 - chrX is supported without chromosome 1-22 hard-coding.
@@ -175,7 +173,7 @@ Implementation tasks:
 - implement `load_ld(ld_dir, reference, chrX_default_sex=None)` discovery from
   either a single shard directory or a panel root; for panel roots, derive
   expected shard directories from `reference` shard labels as
-  `ld_dir/<shard_label>/`, using `ld_dir/all/` for one-shard references;
+  `ld_dir/<shard_label>/`;
 - validate `num_snp`, `num_ld`, triplet lengths, `idx1 < idx2`, bounds, value
   arrays, diagonal policy, and reference checksums;
 - implement sparse LD materialization in Python and MATLAB/Octave;
@@ -196,7 +194,7 @@ Tests and acceptance criteria:
 - chrX default sex is restored from cache and can be overridden by callers;
 - invalid metadata or binary array lengths fail clearly;
 - `multiply_r2` accepts both vectors and matrices and returns the same shape;
-- non-sharded `"all"` references and LD panels are supported.
+- single-chromosome reference panels (one shard) load and work correctly.
 
 ## Phase 5: LD build and conversion script
 
@@ -207,13 +205,11 @@ Implementation tasks:
 
 - implement `script/statgen_build_ld.py`;
 - support sharded bfile input with `@` and non-sharded input;
-- for non-sharded input, split by chromosome by default and support
-  `--no-shard` for one `"all"` LD output;
+- for non-sharded input, split by chromosome;
 - run PLINK2 `--freq` and `--r` with `--keep-allele-order`;
 - default to a 10,000 kb LD window and `r2 >= 0.05` storage threshold, with
   command-line overrides recorded in metadata;
 - convert PLINK output into portable triplets and `mafvec`;
-- require unambiguous SNP row mapping for `--no-shard`;
 - for chrX, build `combined`, `male`, and `female` shard-group outputs by
   default using FAM sex codes, with `--no-sex-split` for combined-only output;
 - record build command, PLINK version if available, sample count, window,

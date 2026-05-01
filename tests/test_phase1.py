@@ -75,13 +75,6 @@ def test_nonsharded_split_checksums_match_sharded():
         assert s1.checksum == s2.checksum
 
 
-def test_nonsharded_noshard():
-    panel = load_reference(NONSHARDED, no_shard=True)
-    assert len(panel.shards) == 1
-    assert panel.shards[0].label == "all"
-    assert panel.num_snp == 8
-
-
 # ---------------------------------------------------------------------------
 # Python: accessors
 # ---------------------------------------------------------------------------
@@ -301,7 +294,7 @@ def test_bim_uses_dataframe_reader(monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(ref_mod.pd, "read_csv", _wrapped_read_csv)
-    panel = load_reference(NONSHARDED, no_shard=True)
+    panel = load_reference(NONSHARDED)
 
     assert called["read_csv"] is True
     assert panel.num_snp == 8
@@ -390,22 +383,6 @@ def test_octave_nonsharded_split():
     assert lines[0] == "2"
     assert lines[1] == "1 5"
     assert lines[2] == "X 3"
-
-
-@skipif_no_octave
-def test_octave_noshard():
-    script = _octave_script(
-        "ref = statgen.load_reference([fixture_dir '/reference/nonsharded/all.bim'], true); "
-        "printf('%d\\n', numel(ref.shards)); "
-        "printf('%s\\n', ref.shards{1}.label); "
-        "printf('%d\\n', ref.num_snp);"
-    )
-    result = run_octave(script)
-    assert result.returncode == 0, result.stderr
-    lines = result.stdout.strip().splitlines()
-    assert lines[0] == "1"
-    assert lines[1] == "all"
-    assert lines[2] == "8"
 
 
 @skipif_no_octave

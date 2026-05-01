@@ -24,8 +24,8 @@ Portable disk representation choices:
   The sharding of an `LDPanel` must match the sharding of the reference used
   with it.
 - `Sumstats` is non-sharded on disk: one `.tsv.gz` per trait/source.
-- annotations are canonical BED interval inputs; painted annotation objects are
-  in-memory representations and optional caches.
+- annotations are canonical BED interval inputs, non-sharded on disk;
+  painted annotation objects are in-memory representations (sharded).
 
 ## Objects
 

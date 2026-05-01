@@ -126,15 +126,10 @@ ordered collection of shards. Within each shard, rows define zero-based local
 SNP indices. Across a panel, rows define zero-based global SNP indices.
 
 In memory, all panel-like objects are represented as ordered shard vectors.
-Simple non-sharded usage is represented as a one-shard panel, including a
-single shard that spans multiple chromosomes when the caller deliberately
-constructs or loads it that way.
 
 Portable reference, genotype, and LD panels may be sharded or non-sharded on
 disk. A one-chromosome analysis is a one-shard panel. A chromosome subset such
-as chr20-22 is represented by an ordered subset of shard files. Variant
-subsetting creates a new reference panel with the chosen shard structure;
-downstream genotype and LD panels are interpreted relative to that new panel.
+as chr20-22 is represented by an ordered subset of shard files.
 
 chrX is a first-class chromosome. Implementations may initially support only
 diploid chrX coding inherited from PLINK bfiles, but they must not hard-code
