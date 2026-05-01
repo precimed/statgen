@@ -18,7 +18,7 @@ function sumstats = build_sumstats_(tbl, reference, path)
     if is_table_like_(tbl)
         var_names = lower(tbl.Properties.VariableNames);
     else
-        var_names = lower(tbl.('_var_names')(:)');
+        var_names = lower(tbl.statgen_var_names__(:)');
     end
     required = {'chr', 'bp', 'a1', 'a2', 'z', 'n'};
     for i = 1:numel(required)
@@ -159,7 +159,7 @@ function [tbl, cleanup_fn] = parse_sumstats_table_(path)
     cols = textscan(fid, fmt, 'Delimiter', '\t', 'Whitespace', '', 'MultipleDelimsAsOne', false, 'ReturnOnError', false);
     clear closer;
     S = struct();
-    S.('_var_names') = names;
+    S.statgen_var_names__ = names;
     for i = 1:numel(names)
         S.(names{i}) = ensure_cellstr_col_(cols{i});
     end
@@ -174,14 +174,14 @@ function col = get_col_(tbl, var_names, name)
     if is_table_like_(tbl)
         col = tbl{:, idx};
     else
-        field_name = tbl.('_var_names'){idx};
+        field_name = tbl.statgen_var_names__{idx};
         col = tbl.(field_name);
     end
 end
 
 function tf = is_table_like_(x)
     tf = false;
-    if isstruct(x) && isfield(x, '_var_names')
+    if isstruct(x) && isfield(x, 'statgen_var_names__')
         return
     end
     if exist('istable', 'file') == 2
