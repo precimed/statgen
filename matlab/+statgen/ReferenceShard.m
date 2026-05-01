@@ -24,8 +24,23 @@ classdef ReferenceShard
             % MD5 over 'chr:bp:a1:a2\n' lines in row order
             bp_str = cellstr(num2str(round(obj.bp), '%d'));
             parts = strcat(obj.chr, {':'}, bp_str, {':'}, obj.a1, {':'}, obj.a2, {sprintf('\n')});
-            computed = hash('md5', [parts{:}]);
+            text_payload = [parts{:}];
+            computed = md5_hex_(text_payload);
             obj.checksum = computed;
         end
     end
+end
+
+function out = md5_hex_(text_payload)
+    try
+        out = lower(hash('md5', text_payload));
+        return
+    catch
+        % MATLAB path: use Java MessageDigest when hash(...) is unavailable.
+    end
+
+    md = java.security.MessageDigest.getInstance('MD5');
+    md.update(uint8(text_payload));
+    d = typecast(md.digest(), 'uint8');
+    out = lower(reshape(dec2hex(d)', 1, []));
 end
