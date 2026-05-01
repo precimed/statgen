@@ -80,9 +80,10 @@ def run_octave(expr: str, timeout: int = 30) -> subprocess.CompletedProcess:
                 stdout="",
                 stderr=_MATLAB_ENGINE_ERROR or "MATLAB engine initialization failed",
             )
+        matlab_expr = expr.replace("printf(", "fprintf(")
         wrapped = (
             "try; "
-            + expr
+            + matlab_expr
             + "; "
             + "catch ME; fprintf(2, '%s\\n', getReport(ME, 'extended')); rethrow(ME); end"
         )
