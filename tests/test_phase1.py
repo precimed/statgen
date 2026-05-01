@@ -418,7 +418,7 @@ def _octave_script(expr: str) -> str:
 def test_octave_sharded_num_snp():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
-        "printf('%d\\n', ref.num_snp);"
+        "fprintf('%d\\n', ref.num_snp);"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -430,7 +430,7 @@ def test_octave_sharded_num_snp():
 def test_octave_sharded_shard_labels():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
-        "for i = 1:numel(ref.shards); printf('%s\\n', ref.shards{i}.label); end"
+        "for i = 1:numel(ref.shards); fprintf('%s\\n', ref.shards{i}.label); end"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -443,7 +443,7 @@ def test_octave_sharded_shard_labels():
 def test_octave_checksums_match_python():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
-        "for i = 1:numel(ref.shards); printf('%s\\n', ref.shards{i}.checksum); end"
+        "for i = 1:numel(ref.shards); fprintf('%s\\n', ref.shards{i}.checksum); end"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -457,8 +457,8 @@ def test_octave_checksums_match_python():
 def test_octave_nonsharded_split():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/nonsharded/all.bim']); "
-        "printf('%d\\n', numel(ref.shards)); "
-        "for i = 1:numel(ref.shards); printf('%s %d\\n', ref.shards{i}.label, ref.shards{i}.num_snp); end"
+        "fprintf('%d\\n', numel(ref.shards)); "
+        "for i = 1:numel(ref.shards); fprintf('%s %d\\n', ref.shards{i}.label, ref.shards{i}.num_snp); end"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -475,7 +475,7 @@ def test_octave_shard_offsets():
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         "off = ref.shard_offsets; "
         "for i = 1:numel(off); "
-        "  printf('%s %d %d\\n', off(i).shard_label, off(i).start0, off(i).stop0); "
+        "  fprintf('%s %d %d\\n', off(i).shard_label, off(i).start0, off(i).stop0); "
         "end"
     )
     result = run_octave(script)
@@ -490,7 +490,7 @@ def test_octave_shard_offsets():
 def test_octave_bp_vector():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
-        "printf('%d\\n', ref.bp);"
+        "fprintf('%d\\n', ref.bp);"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -506,9 +506,9 @@ def test_octave_cache_roundtrip(tmp_path):
         f"ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         f"statgen.save_reference_cache(ref, '{cache_path}'); "
         f"ref2 = statgen.load_reference_cache('{cache_path}'); "
-        f"printf('%d\\n', ref2.num_snp); "
+        f"fprintf('%d\\n', ref2.num_snp); "
         f"for i = 1:numel(ref2.shards); "
-        f"  printf('%s %s\\n', ref2.shards{{i}}.label, ref2.shards{{i}}.checksum); "
+        f"  fprintf('%s %s\\n', ref2.shards{{i}}.label, ref2.shards{{i}}.checksum); "
         f"end; "
         f"ok = 1; "
         f"for i = 1:numel(ref.shards); "
@@ -516,9 +516,9 @@ def test_octave_cache_roundtrip(tmp_path):
         f"  ok = ok && isequal(s1.chr, s2.chr) && isequal(s1.snp, s2.snp) "
         f"           && isequal(s1.bp, s2.bp) && isequal(s1.a1, s2.a1) && isequal(s1.a2, s2.a2); "
         f"end; "
-        f"printf('%d\\n', ok); "
+        f"fprintf('%d\\n', ok); "
         f"s = load('{cache_path}'); "
-        f"printf('%d\\n', isfield(s.cache_shards, 'cm'));"
+        f"fprintf('%d\\n', isfield(s.cache_shards, 'cm'));"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -536,7 +536,7 @@ def test_octave_is_object_compatible():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         "ref2 = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
-        "printf('%d\\n', ref.is_object_compatible(ref2));"
+        "fprintf('%d\\n', ref.is_object_compatible(ref2));"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -550,8 +550,8 @@ def test_octave_select_shards():
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         "sub = ref.select_shards({'X'}); "
-        "printf('%d\\n', sub.num_snp); "
-        "printf('%s\\n', sub.shards{1}.label);"
+        "fprintf('%d\\n', sub.num_snp); "
+        "fprintf('%s\\n', sub.shards{1}.label);"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
