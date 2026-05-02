@@ -2,13 +2,15 @@ classdef ReferencePanel
 % Ordered collection of ReferenceShard objects with genome-wide accessors.
     properties (SetAccess = private)
         num_snp        % total SNP count (scalar)
+        shard_offsets  % struct array: shard_label, start0, stop0 (zero-based half-open)
+        shards         % cell array of ReferenceShard objects
+    end
+    properties (Dependent)
         chr            % num_snp×1 cell array of chromosome labels
         snp            % num_snp×1 cell array of SNP identifiers
         bp             % num_snp×1 double vector of base-pair positions
         a1             % num_snp×1 cell array
         a2             % num_snp×1 cell array
-        shard_offsets  % struct array: shard_label, start0, stop0 (zero-based half-open)
-        shards         % cell array of ReferenceShard objects
     end
 
     methods
@@ -18,11 +20,6 @@ classdef ReferencePanel
             n_shards = numel(shards_cell);
 
             total   = 0;
-            chr_all = {};
-            snp_all = {};
-            bp_all  = [];
-            a1_all  = {};
-            a2_all  = {};
             offsets = struct('shard_label', {}, 'start0', {}, 'stop0', {});
 
             for i = 1:n_shards
@@ -31,21 +28,56 @@ classdef ReferencePanel
                 offsets(i).shard_label = s.label;
                 offsets(i).start0      = total;
                 offsets(i).stop0       = total + n_i;
-                chr_all = [chr_all; s.chr];
-                snp_all = [snp_all; s.snp];
-                bp_all  = [bp_all; s.bp];
-                a1_all  = [a1_all; s.a1];
-                a2_all  = [a2_all; s.a2];
                 total   = total + n_i;
             end
 
             obj.num_snp       = total;
-            obj.chr           = chr_all;
-            obj.snp           = snp_all;
-            obj.bp            = bp_all;
-            obj.a1            = a1_all;
-            obj.a2            = a2_all;
             obj.shard_offsets = offsets;
+        end
+
+        function out = get.chr(obj)
+            if isempty(obj.shards), out = {}; return; end
+            vals = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                vals{i} = obj.shards{i}.chr;
+            end
+            out = vertcat(vals{:});
+        end
+
+        function out = get.snp(obj)
+            if isempty(obj.shards), out = {}; return; end
+            vals = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                vals{i} = obj.shards{i}.snp;
+            end
+            out = vertcat(vals{:});
+        end
+
+        function out = get.bp(obj)
+            if isempty(obj.shards), out = []; return; end
+            vals = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                vals{i} = obj.shards{i}.bp;
+            end
+            out = vertcat(vals{:});
+        end
+
+        function out = get.a1(obj)
+            if isempty(obj.shards), out = {}; return; end
+            vals = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                vals{i} = obj.shards{i}.a1;
+            end
+            out = vertcat(vals{:});
+        end
+
+        function out = get.a2(obj)
+            if isempty(obj.shards), out = {}; return; end
+            vals = cell(numel(obj.shards), 1);
+            for i = 1:numel(obj.shards)
+                vals{i} = obj.shards{i}.a2;
+            end
+            out = vertcat(vals{:});
         end
 
         function out = select_shards(obj, shards)

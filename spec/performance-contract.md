@@ -16,7 +16,10 @@ Caches are accelerators, not canonical data interchange formats.
 - A cache hit MUST be observationally equivalent to loading from canonical
   source inputs, up to documented numeric tolerance.
 - Cache formats MAY be language-specific and are not required to be portable
-  across Python and MATLAB/Octave.
+  across Python and MATLAB/Octave. Cross-language cache sharing is explicitly a
+  non-goal: a cache written by one runtime is not required to be loadable by the
+  other. Workflows that need to share painted annotation data across runtimes
+  should regenerate from canonical BED inputs in each runtime.
 
 Cache loaders SHOULD assume cache payloads are already valid from cache-build
 time and SHOULD avoid full source-style revalidation on the default load path.
@@ -30,6 +33,11 @@ loaded without text parsing of array values.
 Cache round-trips MUST preserve array shape, numeric/logical dtype/class, and
 sparse-vs-dense representation unless an object spec explicitly documents a
 different normalization.
+
+For panel-like objects, shard subsetting (`select_shards`) SHOULD avoid deep
+copying shard payload arrays by default. Implementations should construct subset
+panels from existing shard payloads whenever possible, while preserving object
+immutability and observable API semantics.
 
 For performance-sensitive tabular source inputs (for example BIM/TSV-like
 files), implementations MUST use language-native tabular readers instead of

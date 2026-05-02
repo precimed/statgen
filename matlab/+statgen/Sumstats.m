@@ -2,6 +2,10 @@ classdef Sumstats
 % Ordered collection of SumstatsShard objects with genome-wide accessors.
     properties (SetAccess = private)
         num_snp
+        shard_offsets
+        shards
+    end
+    properties (Dependent)
         zvec
         nvec
         logpvec
@@ -9,8 +13,6 @@ classdef Sumstats
         se_vec
         eaf_vec
         info_vec
-        shard_offsets
-        shards
     end
 
     methods
@@ -20,18 +22,6 @@ classdef Sumstats
             n_shards = numel(shards_cell);
 
             total = 0;
-            z_all = [];
-            n_all = [];
-            logp_all = [];
-            beta_all = [];
-            se_all = [];
-            eaf_all = [];
-            info_all = [];
-            has_beta = true;
-            has_se = true;
-            has_eaf = true;
-            has_info = true;
-
             offsets = struct('shard_label', {}, 'start0', {}, 'stop0', {});
 
             for i = 1:n_shards
@@ -40,28 +30,39 @@ classdef Sumstats
                 offsets(i).shard_label = s.label;
                 offsets(i).start0 = total;
                 offsets(i).stop0 = total + n_i;
-
-                z_all = [z_all; s.zvec];
-                n_all = [n_all; s.nvec];
-                logp_all = [logp_all; s.logpvec];
-
-                if isempty(s.beta_vec), has_beta = false; else, beta_all = [beta_all; s.beta_vec]; end
-                if isempty(s.se_vec), has_se = false; else, se_all = [se_all; s.se_vec]; end
-                if isempty(s.eaf_vec), has_eaf = false; else, eaf_all = [eaf_all; s.eaf_vec]; end
-                if isempty(s.info_vec), has_info = false; else, info_all = [info_all; s.info_vec]; end
-
                 total = total + n_i;
             end
 
             obj.num_snp = total;
-            obj.zvec = z_all;
-            obj.nvec = n_all;
-            obj.logpvec = logp_all;
-            if has_beta, obj.beta_vec = beta_all; else, obj.beta_vec = []; end
-            if has_se, obj.se_vec = se_all; else, obj.se_vec = []; end
-            if has_eaf, obj.eaf_vec = eaf_all; else, obj.eaf_vec = []; end
-            if has_info, obj.info_vec = info_all; else, obj.info_vec = []; end
             obj.shard_offsets = offsets;
+        end
+
+        function out = get.zvec(obj)
+            out = concat_required_(obj.shards, 'zvec');
+        end
+
+        function out = get.nvec(obj)
+            out = concat_required_(obj.shards, 'nvec');
+        end
+
+        function out = get.logpvec(obj)
+            out = concat_required_(obj.shards, 'logpvec');
+        end
+
+        function out = get.beta_vec(obj)
+            out = concat_optional_(obj.shards, 'beta_vec');
+        end
+
+        function out = get.se_vec(obj)
+            out = concat_optional_(obj.shards, 'se_vec');
+        end
+
+        function out = get.eaf_vec(obj)
+            out = concat_optional_(obj.shards, 'eaf_vec');
+        end
+
+        function out = get.info_vec(obj)
+            out = concat_optional_(obj.shards, 'info_vec');
         end
 
         function out = select_shards(obj, shards)
@@ -78,4 +79,33 @@ classdef Sumstats
             out = statgen.Sumstats(out_shards);
         end
     end
+end
+
+function out = concat_required_(shards, field_name)
+    if isempty(shards)
+        out = [];
+        return
+    end
+    vals = cell(numel(shards), 1);
+    for i = 1:numel(shards)
+        vals{i} = shards{i}.(field_name);
+    end
+    out = vertcat(vals{:});
+end
+
+function out = concat_optional_(shards, field_name)
+    if isempty(shards)
+        out = [];
+        return
+    end
+    vals = cell(numel(shards), 1);
+    for i = 1:numel(shards)
+        v = shards{i}.(field_name);
+        if isempty(v)
+            out = [];
+            return
+        end
+        vals{i} = v;
+    end
+    out = vertcat(vals{:});
 end

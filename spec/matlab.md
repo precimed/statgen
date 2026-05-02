@@ -87,7 +87,23 @@ numeric/logical/sparse arrays.
 ## Shard representation
 
 Panels hold an ordered cell array or struct array of shard objects. Genome-wide
-accessors concatenate shard arrays and return a single matrix or vector.
+accessors return a single matrix or vector in panel order.
+
+For panel-like objects (`ReferencePanel`, `Sumstats`, `AnnotationPanel`),
+genome-wide accessors should be implemented as **lazy, non-cached**
+concatenations from shard payloads:
+
+- constructors should not eagerly materialize/store full panel-wide SNP-axis
+  vectors or matrices in addition to per-shard payloads;
+- accessors should build the concatenated output on demand from `shards`;
+- "non-cached" means the panel object should not persist a memoized full
+  panel-wide SNP-axis payload (for example a hidden cached `annomat`/`zvec`)
+  across accessor calls; each accessor call may recompute concatenation;
+- callers that need repeated use should store one local copy, e.g.
+  `A = panel.annomat`.
+
+This keeps MATLAB/Octave behavior aligned with the memory model in the object
+specs and with Python panel-accessor semantics.
 
 ## Error handling
 

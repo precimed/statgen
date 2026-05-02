@@ -24,6 +24,16 @@ annotations/
 Painted matrices are not canonical—they are derived from BED files and a
 specific reference and must be reproducible from them.
 
+BED metadata/comment lines are allowed and ignored before parsing columns 1–3:
+
+- empty lines;
+- lines starting with `#`;
+- lines starting with `track `;
+- lines starting with `browser `.
+
+For compatibility with existing preprocessing tools, field separation for BED
+data rows is parsed as one or more whitespace characters (tabs or spaces).
+
 ## In-memory objects
 
 `AnnotationShard` and `AnnotationPanel` are reference-specific in-memory
@@ -117,8 +127,13 @@ AnnotationPanel.union_annotations(other, optional mode) -> AnnotationPanel
 
 Expected behavior:
 
-- `bed_paths` is a list of BED files, one per annotation; annotation names are
-  derived deterministically from BED basenames (without extension).
+- `bed_paths` accepts either a single BED file path (string/path scalar) or a
+  list of BED files, one per annotation. A single path is treated as a
+  one-element list. Annotation names are derived deterministically from BED
+  basenames (without extension).
+- Empty BED files are invalid input and must fail with a clear error.
+  A file that becomes empty after skipping allowed BED metadata/comment lines
+  is also invalid and must fail with a clear error.
 - `reference` is required; the output shard structure matches the reference
   panel; `annomat` rows are aligned to the reference.
 - `annonames` must be unique. Duplicate names from BED basenames or
