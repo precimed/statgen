@@ -100,6 +100,8 @@ language-specific sentinel defined in [SPEC.md](SPEC.md).
 load_sumstats(path, reference) -> Sumstats
 save_sumstats_cache(sumstats, path)
 load_sumstats_cache(path, optional shards) -> Sumstats
+create_sumstats(reference, zvec, nvec, optional pvec, optional beta_vec,
+                optional se_vec, optional eaf_vec, optional info_vec) -> Sumstats
 
 Sumstats.zvec -> num_snp float vector
 Sumstats.nvec -> num_snp float vector
@@ -114,6 +116,8 @@ Sumstats.select_shards(shards) -> Sumstats
 Expected behavior:
 
 - `reference` is required; rows are projected into reference order on load.
+- `create_sumstats(...)` creates an in-memory `Sumstats` aligned to `reference`
+  from full-panel vectors. Canonical sumstats TSV files remain external inputs.
 - `chr:bp:a1:a2` joins are exact after basic field parsing; the loader does not
   normalize chromosome labels, swap alleles, or perform strand handling.
 - required numeric fields `z` and `n` must parse as finite numeric values for
@@ -132,6 +136,10 @@ Expected behavior:
   with `NaN` for missing or unmatched rows; when the source column is absent,
   the accessor returns the language-specific missing optional-field sentinel
   from [SPEC.md](SPEC.md) (`None` in Python, `[]` in MATLAB/Octave).
+- `create_sumstats(...)` validates vector lengths against `reference.num_snp`.
+  Unknown shapes fail clearly; required `zvec` and `nvec` values must satisfy
+  the same finite-numeric contract as loaded objects; optional vectors follow
+  the same absent/present sentinel semantics.
 - cache save/load must preserve the same optional-field semantics (field absent
   remains absent; field present remains a vector).
 - Accessors are read-only, concatenate shards in reference panel order, and

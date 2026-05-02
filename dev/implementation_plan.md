@@ -146,6 +146,9 @@ Implementation tasks:
 - implement Python and MATLAB/Octave accessors for genome-wide concatenated
   vectors;
 - implement `Sumstats.select_shards(shards)` returning a subset object;
+- implement `create_sumstats(reference, zvec, nvec, optional pvec, optional
+  beta_vec, optional se_vec, optional eaf_vec, optional info_vec)` in both
+  languages with strict length/shape validation against `reference.num_snp`;
 - implement cache save/load: `load_sumstats_cache(path, shards=None)` performs
   cache-internal validation only, supports optional `shards` subsetting, and
   retains per-shard checksums for explicit post-load compatibility checks.
@@ -158,13 +161,15 @@ Tests and acceptance criteria:
 - malformed TSV files with missing required columns fail with clear errors;
 - malformed TSV files with non-finite/non-numeric required `z` or `n` fail with
   clear errors;
+- factory creation validates vector lengths/shapes and preserves optional-field
+  sentinel semantics;
 - post-load compatibility checks via `ReferencePanel.is_object_compatible`
   detect incompatible references.
 
 ## Phase 3: annotation painting
 
 Goal: paint BED interval annotations onto a reference panel and expose binary
-annotation matrices.
+SNP-level feature-mask matrices.
 
 Implementation tasks:
 
@@ -172,10 +177,21 @@ Implementation tasks:
 - sort and merge overlapping or adjacent intervals per chromosome;
 - convert BIM 1-based `bp` to 0-based positions for interval membership;
 - implement binary-search interval painting in reference row order;
-- derive annotation names from BED filenames;
+- derive annotation names deterministically from BED basenames (without
+  extension); fail on duplicate names;
 - implement Python `AnnotationShard` and `AnnotationPanel` classes with
   `annomat` and `annonames` accessors;
 - implement `AnnotationPanel.select_shards(shards)` returning a subset panel;
+- implement `AnnotationPanel.select_annotations(names)` preserving requested
+  order and failing on unknown names;
+- implement `AnnotationPanel.union_annotations(other, mode='by_name')`
+  requiring `ReferencePanel.is_object_compatible(other)` and failing on name
+  collisions;
+- implement `create_annotations(reference, annomat, annonames)` and
+  `create_annotation(reference, annovec, annoname)` with strict
+  reference-alignment and binary-value validation;
+- use sparse internal representation by default and avoid dense materialization
+  unless explicitly requested by caller;
 - implement MATLAB/Octave annotation painting with matching semantics;
 - implement cache save/load: `load_annotations_cache(path, shards=None)` does
   not require a reference object; performs cache-internal validation only and
@@ -189,6 +205,12 @@ Tests and acceptance criteria:
 - chromosomes absent from a BED file produce all-zero masks;
 - Python and Octave `annomat` and `annonames` match for sharded and one-shard
   reference layouts;
+- Python and Octave behavior matches for sparse-vs-dense representations
+  (identical logical mask semantics);
+- `select_annotations` preserves requested order and fails on unknown names;
+- `union_annotations` enforces reference compatibility and fails on name
+  collisions;
+- factory creation validates shape, binary values, and unique names;
 - post-load compatibility checks via `ReferencePanel.is_object_compatible`
   detect incompatible references for annotation caches;
 - complement masks and LD-weighted matrices are left to user-space arrays.

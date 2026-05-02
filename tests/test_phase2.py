@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from statgen.reference import load_reference
-from statgen.sumstats import load_sumstats, save_sumstats_cache, load_sumstats_cache
+from statgen.sumstats import create_sumstats, load_sumstats, save_sumstats_cache, load_sumstats_cache
 from tests.conftest import FIXTURES_DIR, MATLAB_DIR, run_octave, skipif_no_octave
 
 SHARDED_REF = FIXTURES_DIR / "reference/sharded/@.bim"
@@ -228,6 +228,48 @@ def test_cache_validation_errors(tmp_path):
         load_sumstats_cache(cache, shards=["2"])
 
 
+def test_create_sumstats_from_vectors():
+    reference = load_reference(SHARDED_REF)
+    zvec = np.array([2.5, 1.0, 1.8, -1.2, np.nan, 3.0, 0.5, np.nan], dtype=float)
+    nvec = np.array([1000, 950, 1000, 1000, np.nan, 500, 500, np.nan], dtype=float)
+    pvec = np.array([0.01, 0.5, 0.0, -0.1, np.nan, 0.003, 0.6, 1.1], dtype=float)
+    beta_vec = np.array([0.2, -0.1, 0.3, 0.0, np.nan, 0.5, 0.05, np.nan], dtype=float)
+
+    s = create_sumstats(reference, zvec, nvec, pvec=pvec, beta_vec=beta_vec)
+
+    np.testing.assert_allclose(s.zvec, zvec, equal_nan=True)
+    np.testing.assert_allclose(s.nvec, nvec, equal_nan=True)
+    assert math.isclose(s.logpvec[0], 2.0)
+    assert math.isclose(s.logpvec[1], -math.log10(0.5))
+    assert math.isinf(s.logpvec[2])
+    assert np.isnan(s.logpvec[3])
+    assert np.isnan(s.logpvec[4])
+    assert math.isclose(s.logpvec[5], -math.log10(0.003))
+    assert math.isclose(s.logpvec[6], -math.log10(0.6))
+    assert np.isnan(s.logpvec[7])
+    np.testing.assert_allclose(s.beta_vec, beta_vec, equal_nan=True)
+    assert s.se_vec is None
+    assert s.eaf_vec is None
+    assert s.info_vec is None
+
+
+def test_create_sumstats_validation_errors():
+    reference = load_reference(SHARDED_REF)
+    with pytest.raises(ValueError, match="zvec length mismatch"):
+        create_sumstats(reference, np.array([1.0]), np.ones(reference.num_snp))
+    with pytest.raises(ValueError, match="nvec\\[0\\] must be finite numeric or NaN"):
+        create_sumstats(reference, np.zeros(reference.num_snp), np.r_[np.inf, np.zeros(reference.num_snp - 1)])
+    with pytest.raises(ValueError, match="pvec\\[0\\] must be finite numeric or NaN"):
+        create_sumstats(reference, np.zeros(reference.num_snp), np.zeros(reference.num_snp), pvec=np.r_[np.inf, np.zeros(reference.num_snp - 1)])
+    with pytest.raises(ValueError, match="beta_vec\\[0\\] must be finite numeric or NaN"):
+        create_sumstats(
+            reference,
+            np.zeros(reference.num_snp),
+            np.zeros(reference.num_snp),
+            beta_vec=np.r_[np.inf, np.zeros(reference.num_snp - 1)],
+        )
+
+
 def _octave_script(expr: str) -> str:
     matlab_dir = str(MATLAB_DIR)
     fixture_dir = str(FIXTURES_DIR)
@@ -444,3 +486,49 @@ def test_octave_optional_fields_absent_use_empty_vector_sentinel(tmp_path):
     lines = result.stdout.strip().splitlines()
     assert lines[0] == "1 1 1 1"
     assert lines[1] == "1 1 1 1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_create_sumstats_from_vectors():
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        "z = [2.5; 1.0; 1.8; -1.2; NaN; 3.0; 0.5; NaN]; "
+        "n = [1000; 950; 1000; 1000; NaN; 500; 500; NaN]; "
+        "p = [0.01; 0.5; 0; -0.1; NaN; 0.003; 0.6; 1.1]; "
+        "s = statgen.create_sumstats(ref, z, n, p); "
+        "ok = zeros(1,8); "
+        "ok(1) = (s.logpvec(1) == 2); "
+        "ok(2) = abs(s.logpvec(2) - (-log10(0.5))) < 1e-12; "
+        "ok(3) = isinf(s.logpvec(3)); "
+        "ok(4) = isnan(s.logpvec(4)); "
+        "ok(5) = isnan(s.logpvec(5)); "
+        "ok(6) = abs(s.logpvec(6) - (-log10(0.003))) < 1e-12; "
+        "ok(7) = abs(s.logpvec(7) - (-log10(0.6))) < 1e-12; "
+        "ok(8) = isnan(s.logpvec(8)); "
+        "fprintf('%d %d %d %d %d %d %d %d\\n', ok); "
+        "fprintf('%d\\n', isempty(s.beta_vec) && isempty(s.se_vec) && isempty(s.eaf_vec) && isempty(s.info_vec));"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().splitlines()
+    assert lines[0] == "1 1 1 1 1 1 1 1"
+    assert lines[1] == "1"
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_octave_create_sumstats_rejects_inf_inputs():
+    script = _octave_script(
+        "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        "z = zeros(ref.num_snp, 1); "
+        "n = zeros(ref.num_snp, 1); "
+        "p = zeros(ref.num_snp, 1); p(1) = Inf; "
+        "b = zeros(ref.num_snp, 1); b(1) = Inf; "
+        "ok1 = 0; try; statgen.create_sumstats(ref, z, n, p); catch; ok1 = 1; end; "
+        "ok2 = 0; try; statgen.create_sumstats(ref, z, n, [], b); catch; ok2 = 1; end; "
+        "fprintf('%d %d\\n', ok1, ok2);"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "1 1"

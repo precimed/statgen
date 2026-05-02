@@ -136,15 +136,16 @@ must be reproducible from portable source files.
 
 ## Object scope and mutability
 
-`statgen` objects are **load-only**: they are created exclusively by loader
-functions (`load_reference`, `load_ld`, etc.) or cache loaders. There are no
-public constructors. User code does not build objects field by field; it loads
-from canonical disk sources.
+`statgen` objects are created by loader/cache-loader APIs or by validated
+factory functions defined in object specs. There are no public constructors.
+User code does not build objects by mutating fields directly.
 
-Objects are **immutable after loading**. No setter methods or in-place
-modifications are defined. The object holds exactly what was on disk; any
-derived quantity (a filtered vector, a reweighted matrix) lives in a plain
-array in the caller's workspace, not in the object.
+Objects are **immutable after creation** (loading or validated factory
+construction). No setter methods or in-place
+modifications are defined. The object holds exactly what was loaded from disk
+or supplied to a validated factory; any derived quantity (a filtered vector, a
+reweighted matrix) lives in a plain array in the caller's workspace, not in
+the object.
 
 The operations exposed by objects are limited to what is needed for basic
 statistical genetics workflows:

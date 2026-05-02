@@ -242,6 +242,52 @@ def _derive_logp(p_vals: np.ndarray) -> np.ndarray:
     return logp
 
 
+def _coerce_aligned_vec(name: str, vec, n: int, allow_inf: bool) -> np.ndarray:
+    arr = np.asarray(vec, dtype=float)
+    if arr.ndim > 2 or (arr.ndim == 2 and 1 not in arr.shape):
+        raise ValueError(f"{name} must be a vector with length {n}")
+    arr = arr.reshape(-1)
+    if arr.size != n:
+        raise ValueError(f"{name} length mismatch: expected {n}, got {arr.size}")
+    if not allow_inf:
+        bad = ~(np.isfinite(arr) | np.isnan(arr))
+        if bad.any():
+            idx = int(np.flatnonzero(bad)[0])
+            raise ValueError(f"{name}[{idx}] must be finite numeric or NaN")
+    return arr
+
+
+def _build_sumstats_from_aligned(
+    reference,
+    aligned_z: np.ndarray,
+    aligned_n: np.ndarray,
+    aligned_logp: np.ndarray,
+    aligned_optional: dict[str, np.ndarray | None],
+) -> Sumstats:
+    n = int(reference.num_snp)
+    if aligned_z.size != n or aligned_n.size != n or aligned_logp.size != n:
+        raise ValueError("aligned vector length mismatch with reference")
+
+    shards = []
+    for ref_shard, off in zip(reference.shards, reference.shard_offsets):
+        start = int(off["start0"])
+        stop = int(off["stop0"])
+        shards.append(
+            SumstatsShard(
+                label=ref_shard.label,
+                checksum=ref_shard.checksum,
+                zvec=aligned_z[start:stop],
+                nvec=aligned_n[start:stop],
+                logpvec=aligned_logp[start:stop],
+                beta_vec=None if aligned_optional["beta"] is None else aligned_optional["beta"][start:stop],
+                se_vec=None if aligned_optional["se"] is None else aligned_optional["se"][start:stop],
+                eaf_vec=None if aligned_optional["eaf"] is None else aligned_optional["eaf"][start:stop],
+                info_vec=None if aligned_optional["info"] is None else aligned_optional["info"][start:stop],
+            )
+        )
+    return Sumstats(shards)
+
+
 def _build_sumstats_panel(df: pd.DataFrame, reference) -> Sumstats:
     ref_chr = np.asarray(reference.chr, dtype=object)
     ref_bp = np.asarray(reference.bp, dtype=np.int64)
@@ -278,29 +324,54 @@ def _build_sumstats_panel(df: pd.DataFrame, reference) -> Sumstats:
         else:
             aligned_optional[col] = None
 
-    shards = []
-    for ref_shard, off in zip(reference.shards, reference.shard_offsets):
-        start = int(off["start0"])
-        stop = int(off["stop0"])
-        shards.append(
-            SumstatsShard(
-                label=ref_shard.label,
-                checksum=ref_shard.checksum,
-                zvec=aligned_z[start:stop],
-                nvec=aligned_n[start:stop],
-                logpvec=aligned_logp[start:stop],
-                beta_vec=None if aligned_optional["beta"] is None else aligned_optional["beta"][start:stop],
-                se_vec=None if aligned_optional["se"] is None else aligned_optional["se"][start:stop],
-                eaf_vec=None if aligned_optional["eaf"] is None else aligned_optional["eaf"][start:stop],
-                info_vec=None if aligned_optional["info"] is None else aligned_optional["info"][start:stop],
-            )
-        )
-    return Sumstats(shards)
+    return _build_sumstats_from_aligned(
+        reference,
+        aligned_z=aligned_z,
+        aligned_n=aligned_n,
+        aligned_logp=aligned_logp,
+        aligned_optional=aligned_optional,
+    )
 
 
 def load_sumstats(path, reference) -> Sumstats:
     df = _parse_sumstats(Path(path))
     return _build_sumstats_panel(df, reference)
+
+
+def create_sumstats(
+    reference,
+    zvec,
+    nvec,
+    pvec=None,
+    beta_vec=None,
+    se_vec=None,
+    eaf_vec=None,
+    info_vec=None,
+) -> Sumstats:
+    n = int(reference.num_snp)
+    aligned_z = _coerce_aligned_vec("zvec", zvec, n=n, allow_inf=False)
+    aligned_n = _coerce_aligned_vec("nvec", nvec, n=n, allow_inf=False)
+
+    if pvec is None:
+        aligned_logp = np.full(n, np.nan, dtype=float)
+    else:
+        aligned_p = _coerce_aligned_vec("pvec", pvec, n=n, allow_inf=False)
+        aligned_logp = _derive_logp(aligned_p)
+
+    aligned_optional = {
+        "beta": None if beta_vec is None else _coerce_aligned_vec("beta_vec", beta_vec, n=n, allow_inf=False),
+        "se": None if se_vec is None else _coerce_aligned_vec("se_vec", se_vec, n=n, allow_inf=False),
+        "eaf": None if eaf_vec is None else _coerce_aligned_vec("eaf_vec", eaf_vec, n=n, allow_inf=False),
+        "info": None if info_vec is None else _coerce_aligned_vec("info_vec", info_vec, n=n, allow_inf=False),
+    }
+
+    return _build_sumstats_from_aligned(
+        reference,
+        aligned_z=aligned_z,
+        aligned_n=aligned_n,
+        aligned_logp=aligned_logp,
+        aligned_optional=aligned_optional,
+    )
 
 
 def save_sumstats_cache(sumstats: Sumstats, path) -> None:

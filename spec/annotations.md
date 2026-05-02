@@ -2,8 +2,9 @@
 
 ## Represents
 
-Annotations are binary annotations of the genome: each annotation is a set of
-genomic intervals that marks a subset of SNPs as belonging to a category.
+Annotations are SNP-level feature masks. A feature may represent functional
+annotation, gene membership, geneset membership, or other binary SNP category
+definitions.
 
 ## Disk representation
 
@@ -33,8 +34,9 @@ representation keeps annotation data partitioned by chromosome, matching the
 shard structure of the reference. Each shard retains the paired reference
 checksum.
 
-Annotations loaded from BED files are binary. LD-weighted or otherwise numeric
-annotation matrices are user-space arrays derived from `annomat`, not
+Annotations loaded from BED files are binary. Non-binary annotation values are
+out of scope for this phase. LD-weighted or otherwise numeric annotation
+matrices are user-space arrays derived from `annomat`, not
 `AnnotationPanel` fields.
 
 After painting, each annotation occupies one column in `annomat`. The full set
@@ -78,6 +80,10 @@ annotation loader does not provide a negation option.
 Implementations may use language-native containers. The object is tied to one
 reference panel: row order and SNP count correspond to the paired reference,
 and any cache is valid only for that reference.
+Internal representation should default to sparse storage. `annomat` may be
+exposed as dense or sparse depending on implementation heuristics (for example
+mask density), but semantics are identical. Implementations should avoid
+materializing dense `num_snp × num_annot` arrays unless explicitly requested.
 
 ## Panel-level accessors
 
@@ -91,7 +97,7 @@ AnnotationPanel.annonames  -> num_annot string vector
 ```
 
 `annonames` is identical across shards and returned once. The `annomat` type
-follows the shard representation: `bool` or `uint8` for binary annotations.
+follows the shard representation: `bool`, `uint8`, or sparse binary matrix.
 
 ## API
 
@@ -99,18 +105,24 @@ follows the shard representation: `bool` or `uint8` for binary annotations.
 load_annotations(bed_paths, reference) -> AnnotationPanel
 save_annotations_cache(panel, path)
 load_annotations_cache(path, optional shards) -> AnnotationPanel
+create_annotations(reference, annomat, annonames) -> AnnotationPanel
+create_annotation(reference, annovec, annoname) -> AnnotationPanel
 
 AnnotationPanel.annomat -> num_snp × num_annot binary matrix
 AnnotationPanel.annonames -> num_annot string vector
 AnnotationPanel.select_shards(shards) -> AnnotationPanel
+AnnotationPanel.select_annotations(names) -> AnnotationPanel
+AnnotationPanel.union_annotations(other, optional mode) -> AnnotationPanel
 ```
 
 Expected behavior:
 
 - `bed_paths` is a list of BED files, one per annotation; annotation names are
-  derived from the filenames.
+  derived deterministically from BED basenames (without extension).
 - `reference` is required; the output shard structure matches the reference
   panel; `annomat` rows are aligned to the reference.
+- `annonames` must be unique. Duplicate names from BED basenames or
+  programmatic inputs are an error.
 - caching saves and restores the painted `annomat`; the cache is a single file
   (non-sharded). `load_annotations_cache` performs cache-internal validation
   only and supports optional `shards` subsetting.
@@ -120,6 +132,14 @@ Expected behavior:
 - `annonames` must be identical across shards and is returned once.
 - `AnnotationPanel.select_shards` shard subsetting follows
   [contigs-and-shards.md](contigs-and-shards.md).
+- `create_annotations` and `create_annotation` validate strict alignment to the
+  supplied `reference` (`num_snp` shape match, binary values only) and return
+  immutable `AnnotationPanel` objects.
+- `AnnotationPanel.select_annotations(names)` preserves requested name order and
+  fails on unknown names (no silent drops).
+- `AnnotationPanel.union_annotations(other, optional mode)` requires
+  `ReferencePanel.is_object_compatible(other) == true`. `mode` defaults to
+  `by_name`; name collisions are errors.
 - cache payloads store per-shard reference checksums so compatibility with a
   `ReferencePanel` can be checked after load via
   `ReferencePanel.is_object_compatible`.
