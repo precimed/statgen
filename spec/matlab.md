@@ -103,6 +103,11 @@ They return a scalar logical and do not throw.
   schema for mixed-label columns (for example `chr`) rather than auto-inference.
   This avoids label coercion (for example `X` becoming `NaN`) and preserves
   input-contract semantics.
+- Internal struct metadata keys must be valid MATLAB identifiers (for example
+  `statgen_var_names__`), not names that rely on permissive dynamic-field
+  behavior (for example leading-underscore keys such as `_var_names`), because
+  this can fail at runtime under MATLAB even when other environments appear to
+  tolerate it.
 - Use `fprintf` for formatted output in shared runtime/test snippets intended
   to execute under MATLAB. Octave-only output helpers (for example `printf`)
   must be wrapped or normalized at the harness boundary.

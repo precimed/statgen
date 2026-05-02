@@ -6,7 +6,7 @@ LD describes the pairwise signed correlation structure between variants in the
 same processed shard. Values are signed correlation `r`, not `r²`; consumers
 that need `r²` compute it after loading. Cross-chromosome LD is not stored.
 Signs are oriented to `a1` dosages, consistent with the allele contract in
-[conventions.md](conventions.md).
+[SPEC.md](SPEC.md).
 
 LD is paired with a reference: row and column order, SNP count, and the
 accompanying `mafvec` all correspond to a specific `ReferenceShard`.
@@ -17,10 +17,6 @@ Portable LD shard storage is raw binary arrays plus JSON metadata. An LD shard
 is tied to a specific reference shard: its row order, SNP count, and `mafvec`
 entries correspond to the paired `ReferenceShard`, identified by checksum in
 `metadata.json`.
-
-The `reference_checksum` value is the MD5 checksum defined in
-[conventions.md](conventions.md) for the paired reference shard. In-memory
-`LDShard` objects and LD caches retain the same checksum.
 
 ### Autosomal shard (single sex-agnostic shard per chromosome)
 

@@ -6,7 +6,7 @@ Work from the repository root. Use the `Makefile` for common tasks (`make instal
 
 ## Source of truth
 
-Follow `spec/SPEC.md` and all documents in `spec/` as the source of truth. Do not invent undocumented behavior. When docs and code disagree, align implementation to the spec unless explicitly instructed otherwise. Spec changes should prioritize minimalism and no duplication — say a thing once, in the most appropriate document.
+Follow `spec/SPEC.md` and all documents in `spec/` as the source of truth. Do not invent undocumented behavior. When spec and code disagree, align implementation to the spec unless explicitly instructed otherwise. Spec changes should prioritize minimalism and no duplication — say a thing once, in the most appropriate document.
 
 ## Change discipline
 

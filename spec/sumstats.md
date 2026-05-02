@@ -4,7 +4,7 @@
 
 GWAS summary statistics for one trait or source: Z scores, sample sizes, and
 optional effect estimates and quality fields, all oriented to `a1` under the
-allele contract in [conventions.md](conventions.md). Multiple traits are
+allele contract in [SPEC.md](SPEC.md). Multiple traits are
 independent objects that may share the same reference panel. A future
 multi-trait container should use a different name, such as `SumstatsCollection`.
 
@@ -16,6 +16,9 @@ Portable disk representation is one gzip-compressed TSV file per trait/source:
 TRAIT.tsv.gz
 ```
 
+Canonical sumstats TSV files are produced by external GWAS pipelines, not by
+`statgen`; `statgen` consumes these files for loading, alignment, and caching.
+
 Required columns:
 
 - `chr`
@@ -25,7 +28,7 @@ Required columns:
 - `z`
 - `n`
 
-Allele-column contract follows [conventions.md](conventions.md).
+Allele-column contract follows [SPEC.md](SPEC.md).
 
 `z` is required. Files that provide only `beta` and `se` must be converted
 upstream before loading into `statgen`.
@@ -137,4 +140,4 @@ Expected behavior:
   [contigs-and-shards.md](contigs-and-shards.md).
 - cache payloads store per-shard reference checksums for compatibility checks
   under the general reference-compatibility contract in
-  [conventions.md](conventions.md).
+  [reference.md](reference.md).

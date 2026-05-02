@@ -4,7 +4,7 @@
 
 Genotype data consists of per-sample diploid allele counts for a set of
 variants. Counts are oriented to `a1` under the allele contract in
-[conventions.md](conventions.md). PLINK 1 bfile format is the canonical input.
+[SPEC.md](SPEC.md). PLINK 1 bfile format is the canonical input.
 Other formats (PGEN, BGEN, VCF, dosage) are out of scope and should be
 converted by project-specific preprocessing before entering `statgen`.
 
@@ -39,7 +39,7 @@ A `GenotypeShard` is defined by:
 - `bed_path`, `bim_path`, `fam_path`;
 - `num_snp` and `num_sample`;
 - BIM rows with `chr`, `snp`, `cm`, `bp`, `a1`, `a2` under the allele
-  contract in [conventions.md](conventions.md);
+  contract in [SPEC.md](SPEC.md);
 - FAM sample IDs in file order;
 - allele contract: `.bed` genotypes are interpreted as counts/dosages of `a1`.
 

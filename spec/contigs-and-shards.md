@@ -11,6 +11,9 @@ shard-label validation.
 - Contig labels are never normalized: `chr1`, `1`, and `NC_000001.11` are
   distinct labels; mismatches are not resolved silently.
 
+`X` is a first-class chromosome. Implementations must not hard-code
+chromosomes 1–22 in APIs, manifests, or test fixtures.
+
 ## Row-order contract
 
 Source-like SNP tables must already be sorted by:

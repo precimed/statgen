@@ -9,43 +9,46 @@ genotype panels, LD panels, GWAS summary-statistic objects, annotation panels,
 and reference panels in the same workspace. Object loaders must not require all
 data types to live under a single bundle root.
 
-`statgen` starts after variant harmonization. Variant-bearing inputs are
-expected to have already passed through `genomatch` or an equivalent upstream
-pipeline so they share one genome build, `genomatch` NCBI contig naming unless
-explicitly declared otherwise, and the `a1=non-reference`, `a2=reference`
-allele contract. `statgen` uses these inputs as-is. It does not normalize
-chromosome labels, swap alleles, infer reference alleles, liftover coordinates,
-or repair strand issues.
-Within the current default contract, supported contigs are `1`-`22` and `X`.
+## Package-wide rules
 
-Portable disk representation choices:
+In this file:
 
-- `ReferencePanel`, `GenotypePanel`, and `LDPanel` may be sharded or
-  non-sharded on disk. Sharded paths use `@` as the shard-label placeholder.
-  Non-sharded is an input layout only; in-memory panels are contig-sharded.
-  The sharding of an `LDPanel` must match the sharding of the reference used
-  with it.
-- `Sumstats` is non-sharded on disk: one `.tsv.gz` per trait/source.
-- annotations are canonical BED interval inputs, non-sharded on disk;
-  painted annotation objects are in-memory representations (sharded).
+1. [API notation](#api-notation)
+1. [Contig naming, Genome build and Allele contract](#contig-naming-genome-build-and-allele-contract)
+1. [Alignment and indexing](#alignment-and-indexing)
+1. [Portable storage policy](#portable-storage-policy)
+1. [Object scope and mutability](#object-scope-and-mutability)
+1. [Optional collection manifests](#optional-collection-manifests)
 
-## Objects
+In separate files:
 
-- `ReferenceShard` / `ReferencePanel`: SNP tables close to PLINK BIM files.
-- `GenotypeShard` / `GenotypePanel`: PLINK bfile-backed genotype objects.
-- `LDShard` / `LDPanel`: per-chromosome LD objects and multi-shard panels.
-- `AnnotationShard` / `AnnotationPanel`: SNP annotation matrices or masks.
-- `SumstatsShard` / `Sumstats`: GWAS summary statistics for one trait/source;
-  `Sumstats` is an ordered collection of `SumstatsShard`s, not a multi-trait
-  panel.
+1. [contigs-and-shards.md](contigs-and-shards.md): canonical contig set,
+   row-order contract, shard discovery, and shard subsetting rules.
+1. [performance-contract.md](performance-contract.md): cache purpose and
+   performance-oriented storage requirements.
+1. [python.md](python.md): Python package layout and implementation conventions.
+1. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
+1. [testing.md](testing.md): pytest and Octave consistency strategy.
 
-Each object spec should define:
+Objects:
 
-1. what the object represents;
-2. its portable disk representation;
-3. its public API and behavioral invariants.
+1. [reference.md](reference.md): `ReferenceShard` / `ReferencePanel` —
+   SNP tables close to PLINK BIM files.
+1. [genotype.md](genotype.md): `GenotypeShard` / `GenotypePanel` —
+   PLINK bfile-backed genotype objects.
+1. [ld.md](ld.md): `LDShard` / `LDPanel` —
+   per-chromosome LD objects and multi-shard panels.
+1. [annotations.md](annotations.md): `AnnotationShard` / `AnnotationPanel` —
+   SNP annotation matrices or masks, including BED-to-BIM painting.
+1. [sumstats.md](sumstats.md): `SumstatsShard` / `Sumstats` —
+   GWAS summary statistics for one trait/source.
 
-API descriptions are language-agnostic. Signatures use generic pseudocode
+Each object spec should define what the object represents; its portable disk representation;
+its public API and behavioral invariants.
+
+## API notation
+
+API descriptions in the spec are language-agnostic. Signatures use generic pseudocode
 notation and define the logical contract — what arguments are required, what
 is returned, and what invariants hold. Function-like names such as
 `load_reference` are logical API names, not a mandate to implement module-level
@@ -66,6 +69,71 @@ API notation uses neutral data-shape terms:
 - Missing optional return fields use the language's natural empty sentinel:
   `None` in Python and `[]` in MATLAB/Octave.
 
+## Contig naming, Genome build and Allele contract
+
+`statgen` starts after variant harmonization. Variant-bearing inputs are
+expected to have already passed through [`genomatch`](https://github.com/precimed/genomatch)
+or an equivalent upstream pipeline so they share one genome build,
+contig naming for chromosome labels, and the `a1=non-reference`, `a2=reference`
+allele contract. `statgen` uses these inputs as-is. It does not normalize
+chromosome labels, swap alleles, infer reference alleles, liftover coordinates,
+or repair strand issues.
+
+Within the current contract, supported contigs are `1`-`22` and `X`.
+`statgen` currently does not depend on inputs to be in a specific reference genome,
+but it's recommended to provide inputs in `GRCh38`.
+
+Input variant records use `a1` as the non-reference allele and `a2` as the
+reference allele (i.e. match reference fasta sequence).
+Both are non-empty strings of uppercase DNA bases (`A`, `C`,
+`T`, `G`); either may be multi-base for indels. Loaders validate allele syntax
+and preserve values as-is without normalization or case conversion. They do not
+validate whether either allele matches the reference genome sequence at that
+position.
+
+Signed quantities must already be oriented to `a1`:
+
+- GWAS signed effects and Z scores must be oriented to `a1`;
+- genotype dosage/count data must count `a1`;
+- LD correlations must be signed with respect to `a1` dosages.
+
+## Alignment and indexing
+
+Every per-SNP vector or matrix row is aligned to the same reference-panel SNP
+order in memory. Rows are never silently dropped from in-memory aligned objects;
+missing or filtered values are represented by masks or `NaN`.
+`ReferenceShard`/`ReferencePanel` preserve the loaded order in memory; all
+other aligned objects use that reference-defined order.
+
+On disk, source-like objects may store only observed rows plus enough metadata
+to project onto the reference panel. Aligned full-panel files are allowed for
+caches and cross-language fixtures, but alignment is primarily an in-memory
+contract.
+
+A shard is a per-contig partition; a panel is an ordered collection of shards.
+Within each shard rows have shard-local SNP indices; across a panel they have
+global SNP indices. In memory, all panel-like objects are represented as ordered
+shard vectors.
+
+Reference checksum construction is defined in [reference.md](reference.md).
+Reference-aligned objects store the paired `ReferenceShard` checksum in memory
+and in caches/metadata where applicable.
+
+## Portable storage policy
+
+Portable object files should be language-agnostic. Use:
+
+- PLINK `.bim` for reference shards and PLINK `.bed/.bim/.fam` for genotype
+  shards;
+- BED for canonical annotation interval inputs;
+- `.tsv.gz` for portable non-sharded GWAS summary statistics;
+- JSON for manifests and small metadata;
+- raw little-endian binary arrays plus JSON metadata for LD triplets.
+
+Avoid pickle or MATLAB `.mat` as portable storage. Language-specific
+formats are allowed only as caches for performance or interoperability, and
+must be reproducible from portable source files.
+
 ## Object scope and mutability
 
 `statgen` objects are **load-only**: they are created exclusively by loader
@@ -85,57 +153,11 @@ statistical genetics workflows:
   language-native arrays (numpy `ndarray`, MATLAB matrix/vector). For panel
   objects these concatenate shards transparently into genome-wide arrays.
   Examples: `AnnotationPanel.annomat`, `Sumstats.zvec`, `LDPanel.mafvec`.
-- **LD r² matrix multiply**: `LDPanel.multiply_r2(M)` — the only numerical
-  primitive on LD objects, covering LD scores, annotation LD
-  weighting, and per-SNP variance accumulation.
-- **Pruning**: `fast_prune(logpvec, ld_panel, r2_threshold)` — greedy
-  significance-based LD pruning, the other primitive consumers of LD structure.
+- **Object-specific operations**: defined in each object spec (for example
+  `LDPanel.multiply_r2` and `fast_prune` in [ld.md](ld.md)).
 
 Everything beyond this — regression, likelihood, enrichment, model fitting — is
 user-space code that operates on plain arrays extracted from these objects.
-
-## Object provenance
-
-Objects differ in whether `statgen` creates their disk representation or only
-consumes it:
-
-- **Genotype panel**: created by external QC and imputation pipelines, not by
-  `statgen`. The bfile triplets are consumed as-is and serve as a de-facto
-  reference for sample and variant identity.
-- **Reference panel**: created externally (typically derived from genotype BIM
-  files or a curated SNP list), not by `statgen`. The `.bim` files are consumed
-  as-is by the reference loader.
-- **LD panel**: created by `statgen` tooling. The typical sequence is:
-  1. run PLINK to compute pairwise LD for a chromosome;
-  2. run a `statgen` conversion script to transform PLINK output into the
-     portable binary triplet format (`ld_idx1.i32`, `ld_idx2.i32`, `ld_r.f32`,
-     `mafvec.f32`, `metadata.json`).
-- **Summary statistics**: created by external GWAS pipelines, not by `statgen`.
-  The `.tsv.gz` files are consumed by the sumstats loader.
-- **Annotations**: BED interval files are created and curated externally.
-  Painting BED intervals onto a reference (producing `annomat`) is part of the
-  `statgen` API and is supported in both Python and MATLAB/Octave.
-
-Loading objects and projecting them onto a reference is part of the `statgen`
-API.
-
-## Reading order
-
-1. [conventions.md](conventions.md): scope, input contract, shard/panel
-   conventions, index rules, and storage policy.
-2. [contigs-and-shards.md](contigs-and-shards.md): canonical contig set,
-   row-order contract, shard discovery, and shard subsetting rules.
-3. [performance-contract.md](performance-contract.md): cache purpose and
-   performance-oriented storage requirements.
-4. [reference.md](reference.md): `ReferenceShard` and `ReferencePanel`.
-5. [genotype.md](genotype.md): `GenotypeShard` and `GenotypePanel`.
-6. [ld.md](ld.md): `LDShard` and `LDPanel`.
-7. [annotations.md](annotations.md): `AnnotationShard`,
-   `AnnotationPanel`, and BED-to-BIM painting.
-8. [sumstats.md](sumstats.md): `SumstatsShard` and `Sumstats`.
-9. [testing.md](testing.md): pytest and Octave consistency strategy.
-10. [python.md](python.md): Python package layout and implementation conventions.
-11. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
 
 ## Optional collection manifests
 
