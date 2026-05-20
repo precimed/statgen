@@ -1,3 +1,3 @@
-# statgen 0.3.0
+# statgen 0.3.2
 
 * Initial CRAN submission.
