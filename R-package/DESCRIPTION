@@ -10,7 +10,7 @@ Authors@R: c(
     )
 Description: Loads and manages statistical genetics data objects including reference
     panels, genotypes, LD matrices, annotations, and summary statistics. Follows
-    the statgen specification for use across Python, R, and MATLAB/Octave
+    the 'statgen' specification for use across 'Python', 'R', and 'MATLAB'/'Octave'
     runtimes.
 License: MIT + file LICENSE
 URL: https://github.com/precimed/statgen
