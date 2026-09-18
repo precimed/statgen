@@ -119,10 +119,9 @@ summary statistics and genotype BIM sources, uses the tuple `(shard label, bp,
 a1_hash64, a2_hash64)`. The allele hashes are not used for reference
 compatibility checks; compatibility continues to use the stored per-shard
 `reference_checksum`. The allele hashes are not security primitives. Collision
-risk is negligible for non-adversarial allele strings in this use;
-implementations should still fail clearly on duplicate `(bp, a1_hash64,
-a2_hash64)` matching keys within a shard or source input when such duplicates
-would make alignment ambiguous.
+risk is negligible for non-adversarial allele strings in this use.
+Duplicate-key validation follows
+[contigs-and-shards.md](contigs-and-shards.md#duplicate-key-validation).
 
 After exact matching, implementations warn if any unmatched source-side variant
 would have matched the reference within the same shard had `a1_hash64` and
@@ -136,8 +135,7 @@ operations over `(bp, a1_hash64, a2_hash64)`. MATLAB/Octave implementations
 should use a native numeric sort/merge; equivalent native numeric approaches
 are allowed. Implementations must not reconstruct string join keys and must
 not cast `uint64` hashes to `double` for matching because values above `2^53`
-would lose precision. Duplicate matching keys within a shard or source input
-must fail clearly when they would make alignment ambiguous.
+would lose precision.
 
 Regardless of how the panel is sharded, callers access genome-wide vectors and
 matrices through read-only panel-level accessors that concatenate across shards
@@ -265,9 +263,6 @@ Expected behavior:
   layout is specified in the "Cache layout" section above.
 - Shard discovery, contig validation, row-order validation, and shard subsetting
   follow [contigs-and-shards.md](contigs-and-shards.md).
-- Reference source loaders validate only `chr_rank`/`bp` ordering, not
-  allele-string ordering within equal-position groups. They still reject
-  duplicate matching keys within each shard using `(bp, a1_hash64, a2_hash64)`.
 - Reference shard construction and source loading fail clearly if any variant
   has `a1 == a2`.
 - Each `ReferenceShard` must contain exactly one chromosome label. This is a
