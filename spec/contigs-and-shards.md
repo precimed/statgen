@@ -19,26 +19,40 @@ chromosomes 1–22 in APIs, manifests, or test fixtures.
 
 ## Row-order contract
 
-Source-like SNP tables must already be sorted by:
+Reference and genotype BIM inputs must already be sorted by:
 
 ```text
-(chr_rank, bp_numeric, a1_lexicographic, a2_lexicographic)
+(chr_rank, bp_numeric)
 ```
 
-where `chr_rank` follows canonical contig order. Duplicate `(chr, bp, a1, a2)`
-tuples are not allowed.
+where `chr_rank` follows canonical contig order. Base-pair positions may
+repeat; distinct allele pairs within the same `(chr, bp)` may appear in any
+order.
 
 This contract applies to both non-sharded files (enforced across the full file)
 and sharded files (shard sequence must follow canonical contig order; rows
 within each shard must follow row order).
 
-For performance, reference loaders validate only the ordering fields relied on
-by in-memory matching: `chr_rank` and `bp_numeric`. They do not inspect
-`a1_lexicographic`/`a2_lexicographic` ordering because sumstats/reference
-matching uses `(shard label, bp, a1_hash64, a2_hash64)` rather than source row
-order among alleles at the same base-pair coordinate. The full tuple sort order
-remains a normative input contract. Loaders must not reorder or deduplicate
-rows.
+Loaders must not reorder or deduplicate BIM rows. Loaded reference order defines
+the aligned SNP axis, and genotype BIM/BED/PLOIDY row correspondence must remain
+intact.
+
+Sumstats source rows may appear in any order. Loading projects them onto the
+reference axis using the ordered allele identity keys in
+[reference.md](reference.md), independently of source row order.
+
+## Duplicate-key validation
+
+Duplicate variant matching keys, as defined in [reference.md](reference.md),
+must fail within the following scope:
+
+- **BIM inputs**: all supported-contig rows in each loaded file, including
+  chromosomes outside the selected reference shard set.
+- **Sumstats inputs**: all rows on chromosomes selected by the supplied
+  reference, including variants absent from that reference. Duplicate keys on
+  unselected chromosomes are ignored.
+
+Loaders must not silently deduplicate these rows or choose one occurrence.
 
 ## Shard discovery
 
