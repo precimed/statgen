@@ -1,7 +1,7 @@
 Package: statgen
 Type: Package
 Title: Statistical Genetics Data Objects and Loaders
-Version: 0.3.4
+Version: 0.4.0
 Authors@R: c(
     person("Oleksandr", "Frei", role = c("aut", "cph"),
         email = "oleksandr.frei@gmail.com"),

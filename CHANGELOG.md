@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
 ### Added
 - Python, MATLAB/Octave, and R source loaders automatically match reversed
   SNVs, including A/T and C/G under the same-strand assumption. Both loaders
@@ -15,26 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Genotype panels expose `is_allele_swapped` on the full reference SNP axis.
   Genotype fetching via `fetch_genotypes_int8` and `fetch_genotypes` orients
   hardcalls to the reference panel's `a1` (ALT) allele before ploidy scaling.
+  When source alleles are reversed, Z scores and BETA change sign, and EAF
+  becomes `1 - EAF`, so they describe the reference panel's `a1` (ALT) allele.
 
 ### Changed
 - Python, MATLAB/Octave, and R `load_sumstats` validate and drop rows with
-  missing `p` before matching instead of rejecting them, and report the number
-  dropped at `info` verbosity.
+  missing `p` before matching instead of rejecting them.
 - `create_sumstats` accepts missing `p` (`NaN`, or `NA` in R), setting
   `logpvec` and present optional vectors to `NaN` at those positions.
 - MATLAB cache writers now default to MAT-file v7.3; Octave retains v7.
-  Explicit `format` options continue to override the default.
-- When source alleles are reversed, Z scores and beta change sign and EAF
-  becomes `1 - EAF`, so they describe the reference panel's `a1` (ALT) allele.
-  Other statistics and missing values are preserved.
 - `load_reference` now rejects repeated variants and SNPs listed with both
   allele orders, such as A/G and G/A at the same position.
 - Genotype caches now use `genotype_cache/0.2` to record allele swaps.
 
 ### Fixed
 - MATLAB/Octave sumstats loading now rejects infinite base-pair positions.
-- MATLAB cache writers now raise an error when a variable exceeds the selected
-  MAT-file format's size limit instead of succeeding with an incomplete cache.
 - R variant matching now sorts allele hashes at or above
   `0x7FF0000000000000` correctly. Previously, two such alleles at one position
   could lose exact matches, and duplicate keys could load silently.
