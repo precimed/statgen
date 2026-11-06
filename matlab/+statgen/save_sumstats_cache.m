@@ -6,10 +6,12 @@ function save_sumstats_cache(sumstats, path, varargin)
 %
 % Saves a Sumstats object for faster reload in MATLAB or Octave.
 %
+% Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+%
 % See also statgen.Sumstats, statgen.load_sumstats_cache.
     path = char(path);
     [~, save_arg] = statgen.internal.parse_mat_format( ...
-        'save_sumstats_cache', 'v7', {'v7', 'v7.3', 'v5'}, varargin{:});
+        'save_sumstats_cache', statgen.internal.default_cache_mat_format(), {'v7', 'v7.3', 'v5'}, varargin{:});
 
     n_shards = numel(sumstats.shards);
     metadata.schema = 'sumstats_cache/0.1';
@@ -42,6 +44,14 @@ function save_sumstats_cache(sumstats, path, varargin)
     eaf_vec = sumstats.eaf_vec;
     info_vec = sumstats.info_vec;
 
-    save(path, 'metadata', 'zvec', 'nvec', 'logpvec', ...
-        'beta_vec', 'se_vec', 'eaf_vec', 'info_vec', save_arg);
+    payload = struct();
+    payload.metadata = metadata;
+    payload.zvec = zvec;
+    payload.nvec = nvec;
+    payload.logpvec = logpvec;
+    payload.beta_vec = beta_vec;
+    payload.se_vec = se_vec;
+    payload.eaf_vec = eaf_vec;
+    payload.info_vec = info_vec;
+    statgen.internal.save_cache_mat(path, payload, save_arg);
 end

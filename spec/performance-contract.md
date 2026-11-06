@@ -160,8 +160,12 @@ SNP-axis numeric/logical/sparse vectors or matrices.
 
 MATLAB/Octave cache files MUST use MATLAB-native `.mat` storage.
 MATLAB/Octave cache writers accept an optional `format` setting using the same
-language-specific syntax as other `.mat` producers. Supported values are `v7`
-(the cache default), `v7.3`, and `v5`.
+language-specific syntax as other `.mat` producers. Supported values are `v7`,
+`v7.3`, and `v5`. The default is `v7.3` under MATLAB and `v7` under Octave.
+An explicit `format` overrides the runtime default. Cache writers must raise an
+error if the selected format cannot store a variable because of its size,
+rather than report success with an incomplete cache. The caller's warning
+settings must be restored after saving, including on failure.
 
 For SNP-axis vectors and matrices, caches MUST store numeric, logical, and
 sparse data as native arrays in `.mat` variables. Implementations MUST NOT

@@ -273,6 +273,8 @@ classdef GenotypePanel
         %
         % Saves metadata and source BED paths, not dense genotype calls.
         %
+        % Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+        %
         % See also statgen.save_genotype_cache, statgen.load_genotype_cache.
             statgen.save_genotype_cache(obj, path, varargin{:});
         end

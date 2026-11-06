@@ -154,6 +154,8 @@ classdef Sumstats
         %
         % Saves the object in the same format as statgen.save_sumstats_cache.
         %
+        % Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+        %
         % See also statgen.save_sumstats_cache, statgen.load_sumstats_cache.
             statgen.save_sumstats_cache(obj, path, varargin{:});
         end

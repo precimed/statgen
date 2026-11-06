@@ -15,7 +15,7 @@ function convert_ld_npz_to_mat(input_root, output_root, shard, format, save_arg)
     output_root = char(output_root);
     shard = char(shard);
 
-    if strcmp(format, 'v7.3') && is_octave_()
+    if strcmp(format, 'v7.3') && statgen.internal.is_octave()
         error('statgen:ld', ...
             'Octave cannot write production LD .mat distributions; use MATLAB for v7.3 output');
     end
@@ -247,12 +247,4 @@ function cleanup_dir_(path)
     if exist(path, 'dir') == 7
         rmdir(path, 's');
     end
-end
-
-function tf = is_octave_()
-    persistent cached;
-    if isempty(cached)
-        cached = exist('OCTAVE_VERSION', 'builtin') ~= 0;
-    end
-    tf = cached;
 end

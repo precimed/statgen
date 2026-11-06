@@ -277,3 +277,80 @@ def test_matlab_cache_fixtures_load_and_match_sources():
     result = run_octave(script, timeout=60)
     assert result.returncode == 0, result.stderr
     assert matlab_data_lines(result.stdout) == ["OK"]
+
+
+@pytest.mark.octave
+@skipif_no_octave
+@pytest.mark.parametrize(
+    "kind,schema,field",
+    [
+        ("reference", "0_1", "bp"),
+        ("annotations", "0_2", "annomat"),
+        ("sumstats", "0_1", "logpvec"),
+        ("genotype", "0_2", "is_present"),
+    ],
+)
+@pytest.mark.parametrize("format", [None, "v7", "v5"])
+def test_matlab_cache_runtime_default_and_overrides(tmp_path, kind, schema, field, format):
+    import os
+
+    cache = tmp_path / "cache.mat"
+    fixture = CACHE_DIR / f"{kind}_matlab_{kind}_cache_{schema}.mat"
+    options = "" if format is None else f", 'format', '{format}'"
+    result = run_octave(
+        f"original = statgen.load_{kind}_cache('{fixture}'); "
+        "size_warning_before = warning('query', 'MATLAB:save:sizeTooBigForMATFile'); "
+        f"original.save_cache('{cache}'{options}); "
+        "size_warning_after = warning('query', 'MATLAB:save:sizeTooBigForMATFile'); "
+        "assert(strcmp(size_warning_before.state, size_warning_after.state)); "
+        f"restored = statgen.load_{kind}_cache('{cache}'); "
+        "assert(original.num_snp == restored.num_snp); "
+        f"assert(isequaln(original.{field}, restored.{field})); "
+        "fprintf('%d\\n', statgen.internal.is_octave());"
+    )
+    assert result.returncode == 0, result.stderr
+    use_matlab = os.environ.get("STATGEN_MATLAB", "0") == "1"
+    assert matlab_data_lines(result.stdout)[-1] == str(int(not use_matlab))
+    expected = b"MATLAB 7.3 MAT-file" if format is None and use_matlab else b"MATLAB 5.0 MAT-file"
+    with cache.open("rb") as handle:
+        assert handle.read(128).startswith(expected)
+
+
+@pytest.mark.octave
+@skipif_no_octave
+@pytest.mark.parametrize(
+    "kind,schema",
+    [("reference", "0_1"), ("annotations", "0_2"), ("sumstats", "0_1"), ("genotype", "0_2")],
+)
+@pytest.mark.parametrize("format", ["v7", "v5"])
+@pytest.mark.parametrize("warning_state", ["on", "off", "error"])
+def test_matlab_cache_size_warning_fails_and_restores_warning_state(
+    tmp_path, kind, schema, format, warning_state
+):
+    # Simulate the real save warning without allocating a >2GB variable.
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "save.m").write_text(
+        "function save(varargin)\n"
+        "    warning('MATLAB:save:sizeTooBigForMATFile', 'Simulated oversized variable');\n"
+        "end\n"
+    )
+    fixture = CACHE_DIR / f"{kind}_matlab_{kind}_cache_{schema}.mat"
+    result = run_octave(
+        f"original = statgen.load_{kind}_cache('{fixture}'); "
+        "warning_id = 'MATLAB:save:sizeTooBigForMATFile'; "
+        "previous = warning('query', warning_id); "
+        f"warning('{warning_state}', warning_id); "
+        f"addpath('{shadow}', '-begin'); "
+        "caught_id = ''; "
+        f"try; original.save_cache('{tmp_path / 'cache.mat'}', 'format', '{format}'); "
+        "catch ME; caught_id = ME.identifier; end; "
+        "restored = warning('query', warning_id); "
+        f"rmpath('{shadow}'); "
+        "warning(previous); "
+        "assert(strcmp(caught_id, warning_id)); "
+        f"assert(strcmp(restored.state, '{warning_state}')); "
+        "fprintf('OK\\n');"
+    )
+    assert result.returncode == 0, result.stderr
+    assert matlab_data_lines(result.stdout)[-1] == "OK"
