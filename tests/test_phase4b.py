@@ -175,6 +175,7 @@ def test_phase5a_generated_artifacts_support_phase4b_operations(tmp_path):
 @skipif_no_octave
 def test_octave_ld_panel_operations_match_fixture_values():
     script = (
+        "statgen.set_verbosity('quiet'); "
         f"ld = statgen.load_ld('{FIXTURES_DIR / 'ld/matlab'}'); "
         "M = (1:ld.num_snp)'; "
         "R = ld.multiply_r2(M); "
@@ -225,6 +226,7 @@ def test_octave_ld_panel_operations_match_fixture_values():
 @skipif_no_octave
 def test_octave_load_ld_can_drop_raw_ld_r_but_keep_operations():
     script = (
+        "statgen.set_verbosity('quiet'); "
         f"ld = statgen.load_ld('{FIXTURES_DIR / 'ld/matlab'}', 'female', false); "
         "M = (1:ld.num_snp)'; "
         "R = ld.multiply_r2(M); "
