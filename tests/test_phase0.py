@@ -2,8 +2,12 @@
 
 import gzip
 import json
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 import numpy as np
 import pytest

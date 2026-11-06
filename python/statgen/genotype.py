@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import warnings
 from dataclasses import dataclass
@@ -431,7 +433,7 @@ class GenotypePanel:
 
     def _addressed_shards(self, snp_indices: np.ndarray) -> list[tuple[GenotypeShard, np.ndarray, np.ndarray]]:
         addressed = []
-        for shard, offset in zip(self._shards, self._shard_offsets, strict=True):
+        for shard, offset in zip(self._shards, self._shard_offsets):
             start = int(offset["start0"])
             stop = int(offset["stop0"])
             cols = np.flatnonzero((snp_indices >= start) & (snp_indices < stop))

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardcalls to the reference panel's `a1` (ALT) allele before ploidy scaling.
 
 ### Changed
+- MATLAB cache writers now default to MAT-file v7.3; Octave retains v7.
+  Explicit `format` options continue to override the default.
 - When source alleles are reversed, Z scores and beta change sign and EAF
   becomes `1 - EAF`, so they describe the reference panel's `a1` (ALT) allele.
   Other statistics and missing values are preserved.
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Genotype caches now use `genotype_cache/0.2` to record allele swaps.
 
 ### Fixed
+- MATLAB cache writers now raise an error when a variable exceeds the selected
+  MAT-file format's size limit instead of succeeding with an incomplete cache.
 - R variant matching now sorts allele hashes at or above
   `0x7FF0000000000000` correctly. Previously, two such alleles at one position
   could lose exact matches, and duplicate keys could load silently.

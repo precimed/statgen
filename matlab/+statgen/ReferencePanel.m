@@ -307,6 +307,8 @@ classdef ReferencePanel
         %
         % Saves the reference in the same format as statgen.save_reference_cache.
         %
+        % Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+        %
         % See also statgen.save_reference_cache, statgen.load_reference_cache.
             statgen.save_reference_cache(obj, path, varargin{:});
         end

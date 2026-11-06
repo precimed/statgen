@@ -7,10 +7,12 @@ function save_genotype_cache(panel, path, varargin)
 % Saves a GenotypePanel metadata cache, including source BED paths. Dense
 % genotype calls are not stored in the cache.
 %
+% Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+%
 % See also statgen.GenotypePanel, statgen.load_genotype_cache.
     path = char(path);
     [~, save_arg] = statgen.internal.parse_mat_format( ...
-        'save_genotype_cache', 'v7', {'v7', 'v7.3', 'v5'}, varargin{:});
+        'save_genotype_cache', statgen.internal.default_cache_mat_format(), {'v7', 'v7.3', 'v5'}, varargin{:});
 
     n_shards = numel(panel.shards);
     metadata.schema = 'genotype_cache/0.2';
@@ -56,8 +58,21 @@ function save_genotype_cache(panel, path, varargin)
     is_male = panel.is_male;
     is_female = panel.is_female;
 
-    save(path, 'metadata', 'is_present', 'is_allele_swapped', 'ploidy_male', 'ploidy_female', ...
-        'source_row0', 'subject_present', 'source_subject_row0', ...
-        'fid', 'iid', 'father_id', 'mother_id', 'sex', 'is_male', ...
-        'is_female', save_arg);
+    payload = struct();
+    payload.metadata = metadata;
+    payload.is_present = is_present;
+    payload.is_allele_swapped = is_allele_swapped;
+    payload.ploidy_male = ploidy_male;
+    payload.ploidy_female = ploidy_female;
+    payload.source_row0 = source_row0;
+    payload.subject_present = subject_present;
+    payload.source_subject_row0 = source_subject_row0;
+    payload.fid = fid;
+    payload.iid = iid;
+    payload.father_id = father_id;
+    payload.mother_id = mother_id;
+    payload.sex = sex;
+    payload.is_male = is_male;
+    payload.is_female = is_female;
+    statgen.internal.save_cache_mat(path, payload, save_arg);
 end

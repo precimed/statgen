@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import warnings
 from pathlib import Path
@@ -275,7 +277,7 @@ def _read_bed_rows_int8(path: Path, source_rows: np.ndarray, source_num_sample: 
         # PERF: one seek/read per contiguous BED row block; requested order and
         #       repeats are restored after block decoding. Blocks are capped to
         #       bound transient packed/decode allocations for large requests.
-        for start, stop in zip(group_starts, group_stops, strict=True):
+        for start, stop in zip(group_starts, group_stops):
             for chunk_start in range(start, stop, rows_per_read):
                 chunk_stop = min(chunk_start + rows_per_read, stop)
                 block_rows = unique_rows[chunk_start:chunk_stop]

@@ -23,6 +23,27 @@ Regenerate committed test fixtures after a format change:
 make fixtures
 ```
 
+## MATLAB tests from a Python 3.9 environment
+
+For a machine whose installed MATLAB Engine uses Python 3.9, use an existing
+Python 3.9 environment with `pytest`, `numpy`, `scipy`, `pandas`, `tomli`, and
+MATLAB Engine installed. Run from the repository root with `matlab` on `PATH`:
+
+```sh
+STATGEN_MATLAB=1 python -m pytest tests/ -m octave
+```
+
+This is a development setup for the MATLAB test harness, not a Python 3.9
+support commitment for the package. The package requirement remains
+`requires-python = ">=3.10"`; the editable-install setup above uses a supported
+Python version.
+
+Pytest imports test modules before applying the `octave` marker filter, so
+collection errors can come from Python imports before MATLAB starts. The
+current compatibility adjustments allow those imports and the Python helpers
+used by MATLAB tests to run in this environment. `tomli` supplies the TOML
+parser on Python versions without `tomllib`.
+
 ## R package documentation and checks
 
 Run `make prepare-r-fixtures` before directly building the R package or its

@@ -9,6 +9,8 @@ Binary fixture arrays use the dtypes documented by their object specs.
 Reference checksums are MD5 over "chr:bp:a1:a2\n" lines in shard row order.
 """
 
+from __future__ import annotations
+
 import gzip
 import hashlib
 import io

@@ -230,6 +230,8 @@ classdef AnnotationPanel
         %
         % Saves the panel in the same format as statgen.save_annotations_cache.
         %
+        % Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+        %
         % See also statgen.save_annotations_cache,
         % statgen.load_annotations_cache.
             statgen.save_annotations_cache(obj, path, varargin{:});

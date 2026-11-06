@@ -1,6 +1,6 @@
 function out = md5_hex(text_payload)
 % Return lowercase MD5 hex digest for a char/uint8 payload.
-    if exist('OCTAVE_VERSION', 'builtin') ~= 0
+    if statgen.internal.is_octave()
         out = lower(hash('md5', text_payload));
         return
     end

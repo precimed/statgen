@@ -7,6 +7,8 @@ function save_reference_cache(panel, path, varargin)
 % String fields are stored as per-shard newline-delimited character payloads
 % and are decoded lazily by cache-loaded ReferenceShard objects.
 %
+% Default format is 'v7.3' in MATLAB and 'v7' in Octave.
+%
 % See also statgen.ReferencePanel, statgen.load_reference_cache.
     path = char(path);
     save_arg = parse_args_(varargin{:});
@@ -40,13 +42,20 @@ function save_reference_cache(panel, path, varargin)
             panel.shards{i}.cache_text_payloads();
     end
 
-    save(path, 'metadata', 'bp', 'snp_text_by_shard', 'a1_text_by_shard', ...
-        'a2_text_by_shard', 'a1_hash64', 'a2_hash64', save_arg);
+    payload = struct();
+    payload.metadata = metadata;
+    payload.bp = bp;
+    payload.snp_text_by_shard = snp_text_by_shard;
+    payload.a1_text_by_shard = a1_text_by_shard;
+    payload.a2_text_by_shard = a2_text_by_shard;
+    payload.a1_hash64 = a1_hash64;
+    payload.a2_hash64 = a2_hash64;
+    statgen.internal.save_cache_mat(path, payload, save_arg);
 end
 
 function save_arg = parse_args_(varargin)
     [~, save_arg] = statgen.internal.parse_mat_format( ...
-        'save_reference_cache', 'v7', {'v7', 'v7.3', 'v5'});
+        'save_reference_cache', statgen.internal.default_cache_mat_format(), {'v7', 'v7.3', 'v5'});
 
     if mod(numel(varargin), 2) ~= 0
         error('statgen:io', 'save_reference_cache options must be name-value pairs');
