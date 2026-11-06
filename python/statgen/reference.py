@@ -30,8 +30,10 @@ def _validate_reference_keys(shard) -> None:
     reversed_keys = numeric_variant_keys(
         shard.bp[snv], shard.a2_hash64[snv], shard.a1_hash64[snv]
     )
-    if np.any(np.isin(reversed_keys, keys)):
-        raise ValueError(f"reference shard {shard.label}: reciprocal SNV keys are not allowed")
+    reciprocal = np.isin(reversed_keys, keys)
+    if np.any(reciprocal):
+        bp = int(reversed_keys["bp"][np.flatnonzero(reciprocal)[0]])
+        raise ValueError(f"reference shard {shard.label}: reciprocal SNV keys are not allowed at bp={bp}")
 
 
 def _checksum_from_arrays(

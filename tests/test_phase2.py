@@ -526,14 +526,16 @@ def test_octave_load_sumstats_duplicate_matching_key_fails(tmp_path):
         "1\t777\tACGT\tATCGGCTA\t2.5\t1000\t0.01\n"
         "1\t777\tACGT\tATCGGCTA\t2.6\t1000\t0.02\n",
     )
+    reference = tmp_path / "reference.bim"
+    reference.write_text("1\trs777\t0\t777\tACGT\tATCGGCTA\n")
     script = _octave_script(
-        f"ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
+        f"ref = statgen.load_reference('{reference}'); "
         f"try; statgen.load_sumstats('{path}', ref); fprintf('NOFAIL\\n'); catch ME; fprintf('%s\\n', ME.message); end"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
-    assert "a1_hash64=47119B266503B322" in result.stdout
-    assert "a2_hash64=1A8AE73A00B4D922" in result.stdout
+    assert "a1_hash64=5121044840502768418" in result.stdout
+    assert "a2_hash64=1912595228078168354" in result.stdout
 
 
 @pytest.mark.octave
@@ -753,7 +755,7 @@ def test_octave_sumstats_ignores_y_mt_before_field_validation(tmp_path):
 
 @pytest.mark.octave
 @skipif_no_octave
-def test_octave_sumstats_warns_on_unmatched_swapped_alleles(tmp_path):
+def test_octave_sumstats_orients_swapped_alleles(tmp_path):
     path = tmp_path / "swapped.tsv.gz"
     _write_gz_tsv(
         path,
@@ -769,9 +771,9 @@ def test_octave_sumstats_warns_on_unmatched_swapped_alleles(tmp_path):
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
     combined = " ".join((result.stdout + result.stderr).replace("\b", "").split())
-    assert "shard 1: 1 unmatched sumstats variant" in combined
-    assert "a1/a2 were swapped" in combined
-    assert matlab_data_lines(result.stdout)[-1] == "1 0 0 0 0"
+    assert "shard 1: 1 successful allele swap(s)" in combined
+    assert "remain unmatched" not in combined
+    assert matlab_data_lines(result.stdout)[-1] == "1 1 0 0 0"
 
 
 @pytest.mark.octave
@@ -899,7 +901,7 @@ def test_octave_invalid_p_values_fail(tmp_path):
 
 @pytest.mark.octave
 @skipif_no_octave
-def test_octave_allele_flip_does_not_match_reference_key(tmp_path):
+def test_octave_allele_flip_orients_values_to_reference(tmp_path):
     path = tmp_path / "allele_flip.tsv.gz"
     _write_gz_tsv(
         path,
@@ -910,9 +912,9 @@ def test_octave_allele_flip_does_not_match_reference_key(tmp_path):
     script = _octave_script(
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         f"s = statgen.load_sumstats('{path}', ref); "
-        "ok1 = isnan(s.zvec(1)); "
-        "ok2 = isnan(s.nvec(1)); "
-        "ok3 = isnan(s.logpvec(1)); "
+        "ok1 = s.zvec(1) == -7; "
+        "ok2 = s.nvec(1) == 1000; "
+        "ok3 = s.logpvec(1) == 2; "
         "ok4 = abs(s.zvec(6) - 3.0) < 1e-12; "
         "fprintf('%d %d %d %d\\n', ok1, ok2, ok3, ok4);"
     )

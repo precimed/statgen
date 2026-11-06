@@ -1,128 +1,65 @@
-function [loc, n_swapped] = match_shard_numeric(ref_bp, ref_a1_hash64, ref_a2_hash64, src_bp, src_a1_hash64, src_a2_hash64, label, context)
-%MATCH_SHARD_NUMERIC Align source rows to reference rows by numeric variant key.
-%
-% Returns a length(ref_bp) vector. loc(i) is the 1-based source row matching
-% reference row i, or 0 when the reference row is absent from the source.
-    if nargin < 8 || isempty(context)
-        context = 'source';
-    end
+function [loc, is_allele_swapped, n_strand_ambiguous, n_disabled_indels] = match_shard_numeric(ref_bp, ref_a1_hash64, ref_a2_hash64, src_bp, src_a1_hash64, src_a2_hash64, label, context, allow_indel_swaps)
+%MATCH_SHARD_NUMERIC Exact-first alignment, then swaps from unused source rows.
+% loc is 1-based on the supplied source axis, with 0 for absent reference rows.
+    if nargin < 8 || isempty(context), context = 'source'; end
+    if nargin < 9, allow_indel_swaps = false; end
 
+    % Reference validation belongs to load_reference; cached references are trusted.
+    [loc, ~] = lookup_candidates_(ref_bp, ref_a1_hash64, ref_a2_hash64, ...
+        src_bp, src_a1_hash64, src_a2_hash64, (1:numel(src_bp))', ...
+        true(numel(src_bp), 1), label, context);
+    is_allele_swapped = false(numel(ref_bp), 1);
+    unused = true(numel(src_bp), 1);
+    unused(loc(loc > 0)) = false;
+    [snv, strand_ambiguous, indel] = statgen.internal.reference_hash_masks(src_a1_hash64, src_a2_hash64);
+    eligible = snv | (indel & allow_indel_swaps);
+    source_rows = find(unused & (snv | indel));
+    missing = find(loc == 0);
+    [fallback, n_disabled_indels] = lookup_candidates_( ...
+        ref_bp(missing), ref_a1_hash64(missing), ref_a2_hash64(missing), ...
+        src_bp(source_rows), src_a2_hash64(source_rows), src_a1_hash64(source_rows), ...
+        source_rows, eligible(source_rows), label, context);
+    accepted = missing(fallback > 0);
+    loc(accepted) = fallback(fallback > 0);
+    is_allele_swapped(accepted) = true;
+    n_strand_ambiguous = sum(strand_ambiguous(loc(is_allele_swapped)));
+end
+
+function [loc, excluded_hits] = lookup_candidates_(ref_bp, ref_a1, ref_a2, src_bp, src_a1, src_a2, source_rows, eligible, label, context)
     n_ref = numel(ref_bp);
     loc = zeros(n_ref, 1);
-    n_swapped = 0;
-    if isempty(src_bp)
-        return
-    end
+    excluded_hits = 0;
+    if n_ref == 0 || isempty(src_bp), return; end
 
-    all_bp = [ref_bp(:); src_bp(:)];
-    all_a1_hash64 = [uint64(ref_a1_hash64(:)); uint64(src_a1_hash64(:))];
-    all_a2_hash64 = [uint64(ref_a2_hash64(:)); uint64(src_a2_hash64(:))];
+    bp = [ref_bp(:); src_bp(:)];
+    a1 = [uint64(ref_a1(:)); uint64(src_a1(:))];
+    a2 = [uint64(ref_a2(:)); uint64(src_a2(:))];
     is_ref = [true(n_ref, 1); false(numel(src_bp), 1)];
     ref_index = [(1:n_ref)'; zeros(numel(src_bp), 1)];
-    src_index = [zeros(n_ref, 1); (1:numel(src_bp))'];
-
-    order = sort_key_order_(all_bp, all_a1_hash64, all_a2_hash64);
-    bp_sorted = all_bp(order);
-    a1_sorted = all_a1_hash64(order);
-    a2_sorted = all_a2_hash64(order);
-
-    same_prev = [false; ...
-        bp_sorted(2:end) == bp_sorted(1:end-1) & ...
-        a1_sorted(2:end) == a1_sorted(1:end-1) & ...
-        a2_sorted(2:end) == a2_sorted(1:end-1)];
+    src_index = [zeros(n_ref, 1); source_rows(:)];
+    accepted_src = [false(n_ref, 1); eligible(:)];
+    order = statgen.internal.variant_key_order(bp, a1, a2);
+    same_prev = [false; bp(order(2:end)) == bp(order(1:end-1)) & ...
+        a1(order(2:end)) == a1(order(1:end-1)) & ...
+        a2(order(2:end)) == a2(order(1:end-1))];
     group_id = cumsum(~same_prev);
     n_groups = group_id(end);
-
-    is_ref_sorted = is_ref(order);
-    ref_count = accumarray(group_id, double(is_ref_sorted), [n_groups, 1], @sum, 0);
-    src_count = accumarray(group_id, double(~is_ref_sorted), [n_groups, 1], @sum, 0);
-
-    ambiguous = ref_count > 1 | src_count > 1;
+    ref_count = accumarray(group_id, double(is_ref(order)), [n_groups, 1], @sum, 0);
+    src_count = accumarray(group_id, double(~is_ref(order)), [n_groups, 1], @sum, 0);
+    eligible_count = accumarray(group_id, double(accepted_src(order)), [n_groups, 1], @sum, 0);
+    % Eligibility is determined by the key, so a group's candidates agree.
+    excluded_hits = sum(src_count(ref_count > 0 & eligible_count == 0));
+    ambiguous = ref_count > 0 & eligible_count > 1;
     if any(ambiguous)
         g = find(ambiguous, 1, 'first');
-        pos = find(group_id == g, 1, 'first');
+        pos = order(find(group_id == g, 1, 'first'));
         error('statgen:match', ...
-            'Ambiguous duplicate %s/reference matching key in shard %s: bp=%d, a1_hash64=%s, a2_hash64=%s', ...
-            char(context), char(label), round(bp_sorted(pos)), uint64_to_string_(a1_sorted(pos)), uint64_to_string_(a2_sorted(pos)));
+            'Ambiguous duplicate %s/reference matching key in shard %s: bp=%d, a1_hash64=%u, a2_hash64=%u', ...
+            char(context), char(label), round(bp(pos)), a1(pos), a2(pos));
     end
-
-    ref_by_group = accumarray(group_id, ref_index(order), [n_groups, 1], @max, 0);
     src_by_group = accumarray(group_id, src_index(order), [n_groups, 1], @max, 0);
-    matched = ref_count == 1 & src_count == 1;
-    loc(ref_by_group(matched)) = src_by_group(matched);
-    n_swapped = count_swapped_source_matches_( ...
-        ref_bp, ref_a1_hash64, ref_a2_hash64, ...
-        src_bp, src_a1_hash64, src_a2_hash64, loc);
-end
-
-function order = sort_key_order_(bp, a1_hash64, a2_hash64)
-    order = (1:numel(bp))';
-    if isempty(order)
-        return
-    end
-    order = stable_sort_by_(order, a2_hash64);
-    order = stable_sort_by_(order, a1_hash64);
-    order = stable_sort_by_(order, bp);
-end
-
-function order = stable_sort_by_(order, values)
-    current_rank = (1:numel(order))';
-    sorted_values = values(order);
-    [sorted_values, p] = sort(sorted_values, 'ascend');
-    order = order(p);
-    sorted_rank = current_rank(p);
-
-    same_prev = [false; sorted_values(2:end) == sorted_values(1:end-1)];
-    group_id = cumsum(~same_prev);
-    [~, q] = sortrows([double(group_id(:)), double(sorted_rank(:))], [1, 2]);
-    order = order(q);
-end
-
-function out = uint64_to_string_(x)
-    out = dec2hex(uint64(x), 16);
-end
-
-function n = count_swapped_source_matches_(ref_bp, ref_a1_hash64, ref_a2_hash64, src_bp, src_a1_hash64, src_a2_hash64, loc)
-    n_src = numel(src_bp);
-    if n_src == 0 || numel(ref_bp) == 0
-        n = 0;
-        return
-    end
-
-    matched_src = false(n_src, 1);
-    matched_loc = loc(loc > 0);
-    if ~isempty(matched_loc)
-        matched_src(matched_loc) = true;
-    end
-    unmatched = ~matched_src;
-    if ~any(unmatched)
-        n = 0;
-        return
-    end
-
-    swapped_bp = src_bp(unmatched);
-    swapped_a1_hash64 = src_a2_hash64(unmatched);
-    swapped_a2_hash64 = src_a1_hash64(unmatched);
-    n_swapped_src = numel(swapped_bp);
-
-    all_bp = [ref_bp(:); swapped_bp(:)];
-    all_a1_hash64 = [uint64(ref_a1_hash64(:)); uint64(swapped_a1_hash64(:))];
-    all_a2_hash64 = [uint64(ref_a2_hash64(:)); uint64(swapped_a2_hash64(:))];
-    is_ref = [true(numel(ref_bp), 1); false(n_swapped_src, 1)];
-
-    order = sort_key_order_(all_bp, all_a1_hash64, all_a2_hash64);
-    bp_sorted = all_bp(order);
-    a1_sorted = all_a1_hash64(order);
-    a2_sorted = all_a2_hash64(order);
-    same_prev = [false; ...
-        bp_sorted(2:end) == bp_sorted(1:end-1) & ...
-        a1_sorted(2:end) == a1_sorted(1:end-1) & ...
-        a2_sorted(2:end) == a2_sorted(1:end-1)];
-    group_id = cumsum(~same_prev);
-    n_groups = group_id(end);
-
-    is_ref_sorted = is_ref(order);
-    ref_count = accumarray(group_id, double(is_ref_sorted), [n_groups, 1], @sum, 0);
-    src_count = accumarray(group_id, double(~is_ref_sorted), [n_groups, 1], @sum, 0);
-    n = sum(src_count(ref_count > 0));
+    ref_groups = group_id(is_ref(order));
+    ref_rows = ref_index(order(is_ref(order)));
+    matched = eligible_count(ref_groups) == 1;
+    loc(ref_rows(matched)) = src_by_group(ref_groups(matched));
 end

@@ -20,6 +20,7 @@ classdef GenotypePanel
 %   num_sample   Number of samples.
 %   fid, iid     Sample identifiers from FAM metadata.
 %   is_present   Logical vector marking SNPs present in the genotype source.
+%   is_allele_swapped  Logical vector marking swaps into reference orientation.
 %   ploidy_male, ploidy_female  Per-SNP ploidy metadata.
 %
 % Common methods:
@@ -47,6 +48,7 @@ classdef GenotypePanel
     end
     properties (Dependent)
         is_present
+        is_allele_swapped
         ploidy_male
         ploidy_female
         source_row0
@@ -128,6 +130,10 @@ classdef GenotypePanel
             out = concat_required_(obj.shards, 'is_present');
         end
 
+        function out = get.is_allele_swapped(obj)
+            out = concat_required_(obj.shards, 'is_allele_swapped');
+        end
+
         function out = get.ploidy_male(obj)
             out = concat_required_(obj.shards, 'ploidy_male');
         end
@@ -189,7 +195,7 @@ classdef GenotypePanel
         %   G = genotype.fetch_genotypes_int8(snp_indices, bed_path)
         %
         % Returns a num_sample-by-numel(snp_indices) matrix. Calls are encoded
-        % as allele counts 0, 1, or 2; missing calls are -1. snp_indices are
+        % as reference-a1 counts 0, 1, or 2; missing calls are -1. snp_indices are
         % one-based panel SNP indices in MATLAB. bed_path overrides cached
         % source BED paths and may contain '@' for sharded panels. Requesting a
         % reference SNP absent from the genotype source is an error.
@@ -213,6 +219,13 @@ classdef GenotypePanel
                 source_rows0 = shard.source_row0(a.local_indices0 + 1);
                 source_geno = statgen.internal.bfile_read_bed_rows_int8( ...
                     effective_bed, source_rows0, shard.source_num_sample);
+                swapped_columns = find(shard.is_allele_swapped(a.local_indices0 + 1));
+                if ~isempty(swapped_columns)
+                    % Keep lookup indices int8 to avoid a double-sized block temporary.
+                    flip_lut = int8([-1; 2; 1; 0]);
+                    calls = source_geno(:, swapped_columns);
+                    source_geno(:, swapped_columns) = reshape(flip_lut(calls(:) + int8(2)), size(calls));
+                end
                 panel_rows = find(shard.subject_present);
                 if ~isempty(panel_rows)
                     source_subject_rows = shard.source_subject_row0(panel_rows) + 1;

@@ -44,6 +44,7 @@ EXPECTED_CACHE_FIXTURES = [
     ("genotype", "python", "genotype_cache_0_2", "npz", "py"),
     ("genotype", "python", "genotype_cache_0_1", "npz", "py"),
     ("genotype", "matlab", "genotype_cache_0_1", "mat", "m"),
+    ("genotype", "matlab", "genotype_cache_0_2", "mat", "m"),
     ("genotype", "r", "genotype_cache_0_1", "rds", "R"),
 ]
 
@@ -261,6 +262,7 @@ def test_matlab_cache_fixtures_load_and_match_sources():
         "assert(isequal(full(a_old.annomat), full(binary.annomat)), 'annotations 0.1 matrix mismatch'); "
         "g = statgen.load_genotype('tests/fixtures/genotype/sharded/@', ref); "
         "g_cached = statgen.load_genotype_cache([cache_dir '/genotype_matlab_genotype_cache_0_1.mat']); "
+        "assert(~any(g_cached.is_allele_swapped), 'legacy genotype swap state mismatch'); "
         "assert(isequal(g_cached.is_present, g.is_present), 'genotype is_present mismatch'); "
         "assert(isequaln(g_cached.ploidy_male, g.ploidy_male), 'genotype ploidy_male mismatch'); "
         "assert(isequaln(g_cached.ploidy_female, g.ploidy_female), 'genotype ploidy_female mismatch'); "

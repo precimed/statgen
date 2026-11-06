@@ -1,7 +1,11 @@
-function panel = load_genotype(bfile_prefix, reference)
+function panel = load_genotype(bfile_prefix, reference, varargin)
 %LOAD_GENOTYPE Load PLINK genotype metadata aligned to a ReferencePanel.
 %
 %   genotype = statgen.load_genotype(bfile_prefix, reference)
+%   genotype = statgen.load_genotype(bfile_prefix, reference, 'allow_indel_swaps', true)
+%
+% SNV swaps are automatic; indel swaps are opt-in. Fetched counts are oriented
+% to reference a1 (ALT); is_allele_swapped records the matched orientation.
 %
 % bfile_prefix may be either a single non-sharded PLINK bed/bim/fam prefix,
 % such as 'genotypes/all', or an @-sharded template, such as 'genotypes/chr@'.
@@ -26,6 +30,7 @@ function panel = load_genotype(bfile_prefix, reference)
         error('statgen:genotype', 'load_genotype requires bfile_prefix and reference');
     end
 
+    allow_indel_swaps = statgen.internal.parse_allow_indel_swaps(varargin{:});
     ref_shards = validate_reference_(reference);
     prefix = char(bfile_prefix);
     ref_labels = cell(numel(ref_shards), 1);
@@ -105,7 +110,7 @@ function panel = load_genotype(bfile_prefix, reference)
         label = ref_shards{i}.label;
         m = subject_maps.(matlab.lang.makeValidName(['chr_' label]));
         out_shards{i} = build_shard_(ref_shards{i}, get_source_(sources, label), ...
-            m.subject_present, m.source_subject_row0);
+            m.subject_present, m.source_subject_row0, allow_indel_swaps);
     end
 
     panel = statgen.GenotypePanel(out_shards, panel_fam.fid, panel_fam.iid, ...
@@ -238,17 +243,18 @@ function [subject_present, source_subject_row0] = map_chrx_subjects_(chrx_fam, p
     source_subject_row0(panel_rows) = source_rows0;
 end
 
-function shard = build_shard_(ref_shard, source, subject_present, source_subject_row0)
+function shard = build_shard_(ref_shard, source, subject_present, source_subject_row0, allow_indel_swaps)
     source_mask = strcmp(source.bim.chr, ref_shard.label);
     source_bim = subset_bim_(source.bim, source_mask);
+    is_allele_swapped = false(ref_shard.num_snp, 1);
     if isempty(source_bim.bp)
         local_match = zeros(ref_shard.num_snp, 1);
     else
-        [local_match, n_swapped] = statgen.internal.match_shard_numeric( ...
+        [local_match, is_allele_swapped, n_strand_ambiguous, n_disabled_indels] = statgen.internal.match_shard_numeric( ...
             ref_shard.bp, ref_shard.a1_hash64, ref_shard.a2_hash64, ...
             source_bim.bp, source_bim.a1_hash64, source_bim.a2_hash64, ...
-            ref_shard.label, 'genotype');
-        warn_swapped_allele_matches_(source.bim_path, ref_shard.label, n_swapped, 'genotype');
+            ref_shard.label, 'genotype', allow_indel_swaps);
+        statgen.internal.report_variant_swaps(source.bim_path, ref_shard.label, sum(is_allele_swapped), n_strand_ambiguous, n_disabled_indels);
     end
 
     is_present = local_match > 0;
@@ -264,16 +270,8 @@ function shard = build_shard_(ref_shard, source, subject_present, source_subject
 
     shard = statgen.GenotypeShard(ref_shard.label, source.bed_path, ...
         source.bed_file_size, source.source_num_snp, source.source_num_sample, ...
-        source_row0, subject_present, source_subject_row0, is_present, ...
+        source_row0, subject_present, source_subject_row0, is_present, is_allele_swapped, ...
         ploidy_male, ploidy_female, ref_shard.checksum);
-end
-
-function warn_swapped_allele_matches_(path, label, count, context)
-    if count > 0
-        warning('statgen:match', ...
-            '%s: shard %s: %d unmatched %s variant(s) would match the reference if a1/a2 were swapped; variants remain unmatched', ...
-            path, char(label), count, context);
-    end
 end
 
 function out = subset_bim_(bim, mask)

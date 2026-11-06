@@ -1,7 +1,11 @@
-function sumstats = load_sumstats(path, reference)
+function sumstats = load_sumstats(path, reference, varargin)
 %LOAD_SUMSTATS Load summary statistics aligned to a ReferencePanel.
 %
 %   sumstats = statgen.load_sumstats(path, reference)
+%   sumstats = statgen.load_sumstats(path, reference, 'allow_indel_swaps', true)
+%
+% SNV swaps are automatic; indel swaps are opt-in. Signed effects and EAF
+% are oriented to reference a1 (ALT).
 %
 % Loads one TSV or TSV.GZ summary-statistics file for one trait or source; this
 % input is not sharded. Rows are aligned to reference SNPs by chromosome,
@@ -26,6 +30,7 @@ function sumstats = load_sumstats(path, reference)
     if nargin < 2
         error('statgen:arg', 'load_sumstats requires path and reference');
     end
+    allow_indel_swaps = statgen.internal.parse_allow_indel_swaps(varargin{:});
     path = char(path);
     if isempty(path)
         error('statgen:arg', 'path must be non-empty');
@@ -33,11 +38,11 @@ function sumstats = load_sumstats(path, reference)
 
     [tbl, cleanup_fn] = parse_sumstats_table_(path);
     cleaner = onCleanup(cleanup_fn);
-    sumstats = build_sumstats_(tbl, reference, path);
+    sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps);
     clear cleaner;
 end
 
-function sumstats = build_sumstats_(tbl, reference, path)
+function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
     if is_table_like_(tbl)
         var_names = canonicalize_var_names_(tbl.Properties.VariableNames, path);
     else
@@ -136,24 +141,33 @@ function sumstats = build_sumstats_(tbl, reference, path)
         off = reference.shard_offsets(i);
         ix = (off.start0 + 1):off.stop0;
         src_idx = find(strcmp(chr_col, s_ref.label));
-        [loc, n_swapped] = statgen.internal.match_shard_numeric( ...
+        [loc, swapped, n_strand_ambiguous, n_disabled_indels] = statgen.internal.match_shard_numeric( ...
             s_ref.bp, s_ref.a1_hash64, s_ref.a2_hash64, ...
             bp_num(src_idx), src_a1_hash64(src_idx), src_a2_hash64(src_idx), ...
-            s_ref.label, 'sumstats');
-        warn_swapped_allele_matches_(path, s_ref.label, n_swapped, 'sumstats');
+            s_ref.label, 'sumstats', allow_indel_swaps);
+        statgen.internal.report_variant_swaps(path, s_ref.label, sum(swapped), n_strand_ambiguous, n_disabled_indels);
         has_match = loc > 0;
         matched_ref_ix = ix(has_match);
         matched_src_ix = src_idx(loc(has_match));
 
         p_aligned(matched_ref_ix) = p_num(matched_src_ix);
+        swapped_ix = ix(swapped);
         for j = 1:numel(optional_names)
             nm = optional_names{j};
             if ~isempty(aligned_optional.(nm))
                 vals = optional_map.(nm);
                 tmp = aligned_optional.(nm);
                 tmp(matched_ref_ix) = vals(matched_src_ix);
+                if strcmp(nm, 'z') || strcmp(nm, 'beta')
+                    tmp(swapped_ix) = -tmp(swapped_ix);
+                elseif strcmp(nm, 'eaf')
+                    tmp(swapped_ix) = 1 - tmp(swapped_ix);
+                end
                 aligned_optional.(nm) = tmp;
             end
+        end
+        if ~any(has_match)
+            warning('statgen:sumstats', '%s: no matching source rows for reference shard ''%s''', path, s_ref.label);
         end
     end
 
@@ -180,14 +194,6 @@ function sumstats = build_sumstats_(tbl, reference, path)
     end
 
     sumstats = statgen.Sumstats(shards);
-end
-
-function warn_swapped_allele_matches_(path, label, count, context)
-    if count > 0
-        warning('statgen:match', ...
-            '%s: shard %s: %d unmatched %s variant(s) would match the reference if a1/a2 were swapped; variants remain unmatched', ...
-            path, char(label), count, context);
-    end
 end
 
 function var_names = canonicalize_var_names_(raw_names, path)
