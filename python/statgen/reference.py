@@ -9,34 +9,29 @@ import numpy as np
 import pandas as pd
 
 from ._bfile_utils import _parse_bim
-from ._utils import CANONICAL_CHR_ORDER, allele_hash64, validate_requested_shards
+from ._utils import (
+    CANONICAL_CHR_ORDER,
+    _is_single_nucleotide_variant,
+    _is_strand_ambiguous,
+    allele_hash64,
+    validate_requested_shards,
+)
+from ._variant_match import check_unique_sorted_variant_keys, numeric_variant_keys
 
 logger = logging.getLogger(__name__)
 
 _CACHE_SCHEMA = "reference_cache/0.1"
-_A_HASH64, _C_HASH64, _G_HASH64, _T_HASH64 = allele_hash64(
-    np.array(["A", "C", "G", "T"], dtype=object)
-)
-_SINGLE_BASE_HASH64 = np.array(
-    [_A_HASH64, _C_HASH64, _G_HASH64, _T_HASH64], dtype=np.uint64
-)
 
 
-def _is_single_nucleotide_variant(a1_hash64, a2_hash64) -> np.ndarray:
-    return np.isin(a1_hash64, _SINGLE_BASE_HASH64) & np.isin(
-        a2_hash64, _SINGLE_BASE_HASH64
+def _validate_reference_keys(shard) -> None:
+    keys = numeric_variant_keys(shard.bp, shard.a1_hash64, shard.a2_hash64)
+    check_unique_sorted_variant_keys(np.sort(keys), f"reference shard {shard.label}", "reference")
+    snv = shard.is_single_nucleotide_variant
+    reversed_keys = numeric_variant_keys(
+        shard.bp[snv], shard.a2_hash64[snv], shard.a1_hash64[snv]
     )
-
-
-def _is_strand_ambiguous(a1_hash64, a2_hash64) -> np.ndarray:
-    a1 = np.asarray(a1_hash64, dtype=np.uint64).reshape(-1)
-    a2 = np.asarray(a2_hash64, dtype=np.uint64).reshape(-1)
-    return (
-        ((a1 == _A_HASH64) & (a2 == _T_HASH64))
-        | ((a1 == _T_HASH64) & (a2 == _A_HASH64))
-        | ((a1 == _C_HASH64) & (a2 == _G_HASH64))
-        | ((a1 == _G_HASH64) & (a2 == _C_HASH64))
-    )
+    if np.any(np.isin(reversed_keys, keys)):
+        raise ValueError(f"reference shard {shard.label}: reciprocal SNV keys are not allowed")
 
 
 def _checksum_from_arrays(
@@ -410,6 +405,8 @@ def load_reference(path, shards=None) -> ReferencePanel:
                     bim_df["a2"].to_numpy(dtype=object),
                 )
             )
+        for shard in shards:
+            _validate_reference_keys(shard)
         return ReferencePanel(shards)
 
     bim_df = _parse_bim(path_obj)
@@ -431,6 +428,8 @@ def load_reference(path, shards=None) -> ReferencePanel:
                 shard_df["a2"].to_numpy(dtype=object),
             )
         )
+    for shard in out_shards:
+        _validate_reference_keys(shard)
     return ReferencePanel(out_shards)
 
 

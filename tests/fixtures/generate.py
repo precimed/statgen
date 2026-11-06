@@ -500,7 +500,154 @@ X\t300\tG\tA\t-0.8\t500\t0.7
 # Main
 # ---------------------------------------------------------------------------
 
+def write_allele_swap_fixtures() -> None:
+    """Shared valid inputs and an oracle built from explicit construction choices.
+
+    Mapping indices are zero-based physical rows; -1 denotes absence. JSON null
+    denotes missing numeric data. Expected genotype matrices have sample rows
+    and reference-variant columns, including null columns for absent variants
+    (fetching an absent variant must itself fail). BIM/FAM are UTF-8 TSV; BED
+    is standard SNP-major PLINK 1; expected arrays use JSON numeric/bool values.
+    """
+    root = ROOT / "allele_swaps"
+    ref1 = [
+        ("1", "exact", 0, 100, "A", "G"),
+        ("1", "swap", 0, 200, "A", "G"),
+        ("1", "amb_at", 0, 300, "A", "T"),
+        ("1", "amb_cg", 0, 400, "C", "G"),
+        ("1", "indel", 0, 500, "A", "AG"),
+        ("1", "recip_indel_1", 0, 600, "A", "AT"),
+        ("1", "recip_indel_2", 0, 600, "AT", "A"),
+        ("1", "long_exact", 0, 700, "AC", "GT"),
+        ("1", "long_no_swap", 0, 800, "AC", "GT"),
+        ("1", "no_reuse_1", 0, 900, "A", "AC"),
+        ("1", "no_reuse_2", 0, 900, "AC", "A"),
+        ("1", "missing_exact", 0, 1000, "A", "G"),
+        ("1", "absent", 0, 1100, "C", "T"),
+    ]
+    refx = [
+        ("X", "x_swap", 0, 100, "A", "G"),
+        ("X", "x_exact", 0, 200, "C", "T"),
+        ("X", "x_indel", 0, 300, "A", "AT"),
+    ]
+    source1 = [
+        ("1", "s0", 0, 100, "A", "G"),
+        ("1", "s1", 0, 100, "G", "A"),
+        ("1", "s2", 0, 200, "G", "A"),
+        ("1", "s3", 0, 300, "T", "A"),
+        ("1", "s4", 0, 400, "G", "C"),
+        ("1", "s5", 0, 500, "AG", "A"),
+        ("1", "s6", 0, 600, "A", "AT"),
+        ("1", "s7", 0, 600, "AT", "A"),
+        ("1", "s8", 0, 700, "AC", "GT"),
+        ("1", "s9", 0, 700, "GT", "AC"),
+        ("1", "s10", 0, 800, "GT", "AC"),
+        ("1", "s11", 0, 900, "A", "AC"),
+        ("1", "s12", 0, 1000, "A", "G"),
+        ("1", "s13", 0, 1000, "G", "A"),
+    ]
+    sourcex = [
+        ("X", "xs0", 0, 100, "G", "A"),
+        ("X", "xs1", 0, 200, "C", "T"),
+        ("X", "xs2", 0, 300, "AT", "A"),
+    ]
+    # Source SNP rows, subject columns. The exact row at 1000 is all missing;
+    # its reciprocal row has complete data and must still lose.
+    calls1 = [[0, 1, 2, -1], [2, 2, 2, 2], [0, 2, 1, -1],
+              [2, 0, -1, 1], [1, 2, 0, -1], [0, 1, 2, -1],
+              [2, 1, 0, -1], [0, 2, 1, -1], [1, 0, 2, -1],
+              [2, 2, 2, 2], [0, 1, 2, -1], [2, 0, 1, -1],
+              [-1, -1, -1, -1], [2, 2, 2, 2]]
+    # X subjects are a reordered subset: sample 2 (male), then sample 1 (female).
+    callsx = [[0, 2], [1, -1], [2, 0]]
+    ploidyx = [(1, 2), (2, 2), (0, 1)]
+    for label, rows, samples, calls in [
+        ("1", source1, SAMPLES, calls1),
+        ("X", sourcex, [SAMPLES[2], SAMPLES[1]], callsx),
+    ]:
+        base = root / f"genotype/{label}"
+        write_bim(base.with_suffix(".bim"), rows)
+        write_fam(base.with_suffix(".fam"), samples)
+        # Explicit calls -> PLINK packed bytes, independent of library decoder.
+        bits = {2: 0b00, -1: 0b01, 1: 0b10, 0: 0b11}
+        packed = bytearray(b"\x6c\x1b\x01")
+        for row in calls:
+            for start in range(0, len(row), 4):
+                packed.append(sum(bits[value] << (2 * j)
+                                  for j, value in enumerate(row[start:start + 4])))
+        base.with_suffix(".bed").write_bytes(packed)
+    write_ploidy(root / "genotype/X.ploidy", ploidyx)
+    write_bim(root / "reference.bim", ref1 + refx)
+
+    sources = source1 + sourcex
+    # p/n/se/info remain unchanged; missing optional values deliberately occur
+    # in both an exact row and a swapped row.
+    stats = [dict(p=0.01 * (j + 1), z=float(j + 1), n=100 + j,
+                  beta=(j + 1) / 10, se=0.1, eaf=0.2, info=0.9)
+             for j in range(len(sources))]
+    for field in ("z", "n", "beta", "se", "eaf", "info"):
+        stats[12][field] = None
+    stats[3]["eaf"] = None
+    columns = ["p", "z", "n", "beta", "se", "eaf", "info"]
+    # Reverse TSV source order to exercise alignment independently of BIM order.
+    tsv = "chr\tbp\ta1\ta2\t" + "\t".join(columns) + "\n"
+    for row, values in reversed(list(zip(sources, stats))):
+        tsv += "\t".join([row[0], str(row[3]), row[4], row[5]] +
+                         ["NA" if values[c] is None else str(values[c]) for c in columns]) + "\n"
+    with open(root / "sumstats.tsv.gz", "wb") as raw:
+        with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
+            gz.write(tsv.encode("utf-8"))
+    expected = {"index_base": 0, "missing_source_row": -1,
+                "reference_shard_sizes": {"1": 13, "X": 3}, "options": {}}
+    for enabled in (False, True):
+        # These selections and orientations are the independent oracle. No
+        # matcher or loader is called to produce expected aligned outputs.
+        mapping = [0, 2, 3, 4, 5 if enabled else -1, 6, 7, 8, -1,
+                   11, -1, 12, -1, 14, 15, 16 if enabled else -1]
+        swapped = [False, True, True, True, enabled, False, False, False,
+                   False, False, False, False, False, True, False, enabled]
+        aligned = {c: [] for c in columns}
+        raw_columns, scaled_columns = [], []
+        for i, (j, flip) in enumerate(zip(mapping, swapped)):
+            for c in columns:
+                value = None if j < 0 else stats[j][c]
+                if value is not None and flip:
+                    if c in ("z", "beta"):
+                        value = -value
+                    elif c == "eaf":
+                        value = 1 - value
+                aligned[c].append(value)
+            if j < 0:
+                raw = [None] * 4
+            elif j < 14:
+                raw = [None if v == -1 else v for v in calls1[j]]
+            else:
+                x = callsx[j - 14]
+                raw = [None, None if x[1] == -1 else x[1],
+                       None if x[0] == -1 else x[0], None]
+            if flip:
+                raw = [None if v is None else 2 - v for v in raw]
+            male, female = (2, 2) if i < 13 else ploidyx[i - 13]
+            scaled = [None if v is None else v * p / 2
+                      for v, p in zip(raw, [male, female, male, female])]
+            raw_columns.append(raw)
+            scaled_columns.append(scaled)
+        expected["options"][str(enabled).lower()] = {
+            "source_row0": mapping[:13] + [j - 14 if j >= 0 else -1 for j in mapping[13:]],
+            "sumstats_source_row0": [len(sources) - 1 - j if j >= 0 else -1 for j in mapping],
+            "is_allele_swapped": swapped, "aligned_sumstats": aligned,
+            "raw_counts": list(map(list, zip(*raw_columns))),
+            "scaled_counts": list(map(list, zip(*scaled_columns))),
+            "reporting": {"1": {"swaps": 4 if enabled else 3, "strand_ambiguous": 2,
+                                  "disabled_indels": 0 if enabled else 1},
+                          "X": {"swaps": 2 if enabled else 1, "strand_ambiguous": 0,
+                                  "disabled_indels": 0 if enabled else 1}},
+        }
+    write_text(root / "expected.json", json.dumps(expected, indent=2, allow_nan=False) + "\n")
+
+
 def main() -> None:
+    write_allele_swap_fixtures()
     # --- reference ---
     write_bim(ROOT / "reference/sharded/1.bim", CHR1_BIM)
     write_bim(ROOT / "reference/sharded/X.bim", CHRX_BIM)

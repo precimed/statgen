@@ -42,7 +42,8 @@ def _annotations(reference):
 
 def generate_python_cache_fixture(object_name: str) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    reference = _reference()
+    reference = (load_reference(FIXTURES_REL / "allele_swaps/reference.bim")
+                 if object_name == "genotype" else _reference())
     if object_name == "reference":
         save_reference_cache(reference, CACHE_DIR / "reference_python_reference_cache_0_1.npz")
     elif object_name == "sumstats":
@@ -51,7 +52,7 @@ def generate_python_cache_fixture(object_name: str) -> None:
     elif object_name == "annotations":
         save_annotations_cache(_annotations(reference), CACHE_DIR / "annotations_python_annotations_cache_0_2.npz")
     elif object_name == "genotype":
-        panel = load_genotype("tests/fixtures/genotype/sharded/@", reference)
-        save_genotype_cache(panel, CACHE_DIR / "genotype_python_genotype_cache_0_1.npz")
+        panel = load_genotype(FIXTURES_REL / "allele_swaps/genotype/@", reference, allow_indel_swaps=True)
+        save_genotype_cache(panel, CACHE_DIR / "genotype_python_genotype_cache_0_2.npz")
     else:
         raise ValueError(f"unknown cache fixture object: {object_name}")

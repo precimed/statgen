@@ -66,21 +66,22 @@ def test_fetch_decodes_all_two_bit_states_and_preserves_order(tmp_path):
     assert np.array_equal(geno, expected_float, equal_nan=True)
 
 
-def test_load_genotype_warns_on_unmatched_swapped_alleles(tmp_path):
+def test_load_genotype_orients_swapped_alleles(tmp_path, capsys):
     copy_genotype_shard_files(tmp_path, "1")
     rows = list(GENOTYPE_CHR1_BIM)
     rows[1] = ("1", "rs1002", 0, 200, "T", "C")
     write_plink_bim(tmp_path / "1.bim", rows)
 
     ref = load_reference(REF_SHARDED, shards=["1"])
-    with pytest.warns(RuntimeWarning, match="shard 1: 1 unmatched genotype variant.*swapped"):
-        panel = load_genotype(tmp_path / "1", ref)
+    panel = load_genotype(tmp_path / "1", ref)
+    assert "shard 1: 1 successful allele swap" in capsys.readouterr().err
 
     np.testing.assert_array_equal(
         panel.is_present,
-        np.array([True, False, True, True, True]),
+        np.array([True, True, True, True, True]),
     )
-    assert panel.source_row0[1] == -1
+    assert panel.source_row0[1] == 1
+    assert panel.is_allele_swapped[1]
 
 
 def test_fetch_genotypes_ploidy_scaled_maps_haploid_calls():

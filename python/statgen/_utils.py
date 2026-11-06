@@ -114,3 +114,27 @@ def _allele_hash_lanes_from_utf8(encoded) -> tuple[np.ndarray, np.ndarray]:
         h2[active] = (h2[active] * _ALLELE_HASH_BASE2 + x) % _ALLELE_HASH_P
 
     return h1, h2
+
+
+_A_HASH64, _C_HASH64, _G_HASH64, _T_HASH64 = _SINGLE_BASE_HASH64
+
+
+def _is_single_base(h) -> np.ndarray:
+    return np.isin(h, _SINGLE_BASE_HASH64)
+
+
+def _is_single_nucleotide_variant(a1_hash64, a2_hash64) -> np.ndarray:
+    return np.isin(a1_hash64, _SINGLE_BASE_HASH64) & np.isin(
+        a2_hash64, _SINGLE_BASE_HASH64
+    )
+
+
+def _is_strand_ambiguous(a1_hash64, a2_hash64) -> np.ndarray:
+    a1 = np.asarray(a1_hash64, dtype=np.uint64).reshape(-1)
+    a2 = np.asarray(a2_hash64, dtype=np.uint64).reshape(-1)
+    return (
+        ((a1 == _A_HASH64) & (a2 == _T_HASH64))
+        | ((a1 == _T_HASH64) & (a2 == _A_HASH64))
+        | ((a1 == _C_HASH64) & (a2 == _G_HASH64))
+        | ((a1 == _G_HASH64) & (a2 == _C_HASH64))
+    )
