@@ -1,4 +1,5 @@
 .sumstats_cache_schema <- "sumstats_cache/0.1"
+.sumstats_numeric_na_values <- c("", "NA", "NaN")
 .sumstats_required_cols <- c("chr", "bp", "a1", "a2", "p")
 .sumstats_optional_cols <- c("z", "n", "beta", "se", "eaf", "info")
 .sumstats_allowed_cols <- c(.sumstats_required_cols, .sumstats_optional_cols, "snp")
@@ -39,6 +40,9 @@ create_sumstats <- function(reference, p, z = NULL, n = NULL,
     eaf = .coerce_optional_aligned_numeric_vector(eaf, num_snp_value, "eaf"),
     info = .coerce_optional_aligned_numeric_vector(info, num_snp_value, "info")
   )
+  for (field in .sumstats_optional_cols) {
+    if (!is.null(aligned[[field]])) aligned[[field]][is.na(p)] <- NaN
+  }
   .build_sumstats_from_aligned(reference, .derive_logp(p), aligned)
 }
 
@@ -233,15 +237,32 @@ print.Sumstats <- function(x, ...) {
       select = selected_raw,
       colClasses = list(character = char_cols, numeric = numeric_cols),
       data.table = FALSE,
-      showProgress = FALSE
+      showProgress = FALSE,
+      na.strings = .sumstats_numeric_na_values
     )
   )
+  stopped_early <- FALSE
   df <- tryCatch(
-    do.call(data.table::fread, fread_args),
+    withCallingHandlers(
+      do.call(data.table::fread, fread_args),
+      warning = function(w) {
+        message <- conditionMessage(w)
+        if (grepl("Stopped early", message, fixed = TRUE)) {
+          stopped_early <<- TRUE
+          invokeRestart("muffleWarning")
+        }
+        if (startsWith(message, "Attempt to override column")) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    ),
     error = function(e) {
       stop(sprintf("%s: malformed TSV", path), call. = FALSE)
     }
   )
+  if (stopped_early) {
+    stop(sprintf("%s: malformed TSV", path), call. = FALSE)
+  }
   names(df) <- selected_names
 
   missing <- setdiff(.sumstats_required_cols, names(df))
@@ -281,7 +302,7 @@ print.Sumstats <- function(x, ...) {
     stop(sprintf("%s: row %d: a1 and a2 must differ", path, row), call. = FALSE)
   }
 
-  bp <- suppressWarnings(as.numeric(df$bp))
+  bp <- .parse_sumstats_numeric(df$bp, path, "bp", rownames(df))
   bad_bp <- is.na(bp) | !is.finite(bp) | floor(bp) != bp
   if (any(bad_bp)) {
     idx <- which(bad_bp)[[1]]
@@ -290,8 +311,8 @@ print.Sumstats <- function(x, ...) {
   }
   df$bp <- as.integer(bp)
 
-  p <- suppressWarnings(as.numeric(df$p))
-  bad_p <- is.na(p) | !is.finite(p) | p < 0 | p > 1
+  p <- .parse_sumstats_numeric(df$p, path, "p", rownames(df))
+  bad_p <- !is.na(p) & (!is.finite(p) | p < 0 | p > 1)
   if (any(bad_p)) {
     idx <- which(bad_p)[[1]]
     row <- as.integer(rownames(df)[idx]) + 1L
@@ -301,12 +322,32 @@ print.Sumstats <- function(x, ...) {
 
   for (field in .sumstats_optional_cols) {
     if (field %in% names(df)) {
-      value <- suppressWarnings(as.numeric(df[[field]]))
+      value <- .parse_sumstats_numeric(df[[field]], path, field, rownames(df))
       value[!is.finite(value)] <- NaN
       df[[field]] <- value
     }
   }
-  df
+  missing_p <- is.na(df$p)
+  if (any(missing_p)) {
+    .info(sprintf("%s: dropped %d row(s) with missing p", path, sum(missing_p)))
+  }
+  df[!missing_p, , drop = FALSE]
+}
+
+.parse_sumstats_numeric <- function(values, path, field, source_rows) {
+  out <- suppressWarnings(as.numeric(values))
+  if (!is.numeric(values)) {
+    missing <- is.na(values) | values %in% .sumstats_numeric_na_values
+    bad <- is.na(out) & !missing
+    if (any(bad)) {
+      idx <- which(bad)[[1]]
+      row <- as.integer(source_rows[idx]) + 1L
+      reason <- if (field == "bp") "is not an integer" else "must be numeric or missing"
+      stop(sprintf("%s: row %d: %s %s: %s", path, row, field, reason, sQuote(values[[idx]])), call. = FALSE)
+    }
+  }
+  out[is.na(out)] <- NaN
+  out
 }
 
 .read_sumstats_header <- function(path) {
@@ -450,14 +491,17 @@ print.Sumstats <- function(x, ...) {
 }
 
 .validate_p_values <- function(p, name) {
-  bad <- is.na(p) | !is.finite(p) | p < 0 | p > 1
+  bad <- !is.na(p) & (!is.finite(p) | p < 0 | p > 1)
   if (any(bad)) {
     stop(sprintf("%s[%d] must be finite numeric in [0, 1]", name, which(bad)[[1]]), call. = FALSE)
   }
 }
 
 .coerce_aligned_numeric_vector <- function(vec, n, name, allow_inf = FALSE) {
-  arr <- as.numeric(vec)
+  arr <- suppressWarnings(as.numeric(vec))
+  if (any(is.na(arr) & !is.na(vec))) {
+    stop(sprintf("%s must be numeric", name), call. = FALSE)
+  }
   if (length(arr) != n) {
     stop(sprintf("%s length mismatch: expected %d, got %d", name, n, length(arr)), call. = FALSE)
   }

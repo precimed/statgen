@@ -11,7 +11,7 @@ import pandas as pd
 from pandas.errors import EmptyDataError, ParserError
 
 from ._utils import CANONICAL_CHR_ORDER, _validate_allow_indel_swaps, allele_hash64, validate_requested_shards
-from ._verbosity import report_variant_swaps
+from ._verbosity import info, report_variant_swaps
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
 _CACHE_SCHEMA = "sumstats_cache/0.1"
@@ -139,15 +139,19 @@ def _parse_sumstats(path: Path) -> pd.DataFrame:
     out["bp"] = out["bp"].astype(np.int64)
 
     p_arr = out["p"].to_numpy(dtype=float)
-    bad_p = out["p"].isna() | ~np.isfinite(p_arr) | (p_arr < 0.0) | (p_arr > 1.0)
+    bad_p = ~np.isnan(p_arr) & (~np.isfinite(p_arr) | (p_arr < 0.0) | (p_arr > 1.0))
     if bad_p.any():
-        idx = int(bad_p.idxmax())
+        idx = int(out.index[np.flatnonzero(bad_p)[0]])
         raise ValueError(f"{path}: row {idx + 2}: p must be finite numeric in [0, 1]: {out.loc[idx, 'p']!r}")
 
     for opt in _OPTIONAL_COLS:
         if opt in out.columns:
             out[opt] = out[opt].mask(~np.isfinite(out[opt].to_numpy(dtype=float)))
 
+    missing_p = out["p"].isna()
+    if missing_p.any():
+        info(f"{path}: dropped {int(missing_p.sum())} row(s) with missing p")
+        return out.loc[~missing_p].copy()
     return out
 
 
@@ -339,7 +343,7 @@ def _derive_logp(p_vals: np.ndarray) -> np.ndarray:
 
 
 def _validate_pvec(p_vals: np.ndarray, name: str) -> None:
-    bad = ~np.isfinite(p_vals) | (p_vals < 0.0) | (p_vals > 1.0)
+    bad = ~np.isnan(p_vals) & (~np.isfinite(p_vals) | (p_vals < 0.0) | (p_vals > 1.0))
     if bad.any():
         idx = int(np.flatnonzero(bad)[0])
         raise ValueError(f"{name}[{idx}] must be finite numeric in [0, 1]")
@@ -488,6 +492,10 @@ def create_sumstats(
         "eaf": None if eaf is None else _coerce_aligned_vec("eaf", eaf, n=num_snp_value, allow_inf=False),
         "info": None if info is None else _coerce_aligned_vec("info", info, n=num_snp_value, allow_inf=False),
     }
+
+    for name, vec in aligned_optional.items():
+        if vec is not None:
+            aligned_optional[name] = np.where(np.isnan(aligned_p), np.nan, vec)
 
     return _build_sumstats_from_aligned(
         reference,

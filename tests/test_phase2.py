@@ -334,7 +334,7 @@ def test_p_edge_cases(tmp_path):
     assert np.isnan(s.logpvec[7])
 
 
-@pytest.mark.parametrize("bad_p", ["-0.1", "1.1", "", "NaN", "Inf"])
+@pytest.mark.parametrize("bad_p", ["-0.1", "1.1", "Inf"])
 def test_invalid_p_values_fail(tmp_path, bad_p):
     path = tmp_path / "bad_p.tsv.gz"
     _write_gz_tsv(
@@ -465,8 +465,6 @@ def test_create_sumstats_validation_errors():
         create_sumstats(reference, p, n=np.r_[np.inf, np.zeros(reference.num_snp - 1)])
     with pytest.raises(ValueError, match=r"p\[0\] must be finite numeric in \[0, 1\]"):
         create_sumstats(reference, np.r_[np.inf, np.zeros(reference.num_snp - 1)])
-    with pytest.raises(ValueError, match=r"p\[0\] must be finite numeric in \[0, 1\]"):
-        create_sumstats(reference, np.r_[np.nan, np.zeros(reference.num_snp - 1)])
     with pytest.raises(ValueError, match=r"p\[0\] must be finite numeric in \[0, 1\]"):
         create_sumstats(reference, np.r_[-0.1, np.zeros(reference.num_snp - 1)])
     with pytest.raises(ValueError, match="beta\\[0\\] must be finite numeric or NaN"):
@@ -614,7 +612,7 @@ def test_octave_sumstats_gzip_parse_error_cleans_scratch(tmp_path):
     _write_gz_tsv(
         path,
         "chr\tbp\ta1\ta2\tp\n"
-        "1\t100\tA\tG\tNA\n",
+        "1\t100\tA\tG\tinvalid\n",
     )
     scratch = tmp_path / "scratch"
     script = _octave_script(
@@ -815,8 +813,8 @@ def test_octave_sumstats_explicit_nan_tokens(tmp_path):
         "ref = statgen.load_reference([fixture_dir '/reference/sharded/@.bim']); "
         f"s = statgen.load_sumstats('{optional_nan}', ref); "
         "ok = [isnan(s.beta_vec(1)), isnan(s.se_vec(1)), isnan(s.eaf_vec(1)), isnan(s.info_vec(1))]; "
-        f"required_fails = 0; try; statgen.load_sumstats('{required_nan}', ref); catch; required_fails = 1; end; "
-        "fprintf('%d %d %d %d %d\\n', ok, required_fails);"
+        f"missing = statgen.load_sumstats('{required_nan}', ref); required_missing = all(isnan(missing.logpvec)); "
+        "fprintf('%d %d %d %d %d\\n', ok, required_missing);"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
@@ -876,7 +874,7 @@ def test_octave_sumstats_is_present_from_load(tmp_path):
 @skipif_no_octave
 def test_octave_invalid_p_values_fail(tmp_path):
     paths = []
-    for i, bad_p in enumerate(["-0.1", "1.1", "", "NaN", "Inf"]):
+    for i, bad_p in enumerate(["-0.1", "1.1", "invalid"]):
         path = tmp_path / f"bad_p_{i}.tsv.gz"
         _write_gz_tsv(
             path,
@@ -892,11 +890,11 @@ def test_octave_invalid_p_values_fail(tmp_path):
         "for i = 1:numel(paths); "
         "  try; statgen.load_sumstats(paths{i}, ref); catch; ok(i) = 1; end; "
         "end; "
-        "fprintf('%d %d %d %d %d\\n', ok);"
+        "fprintf('%d %d %d\\n', ok);"
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().splitlines()[-1] == "1 1 1 1 1"
+    assert result.stdout.strip().splitlines()[-1] == "1 1 1"
 
 
 @pytest.mark.octave

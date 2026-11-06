@@ -38,7 +38,10 @@ info_vec(x, ...)
 \code{FALSE}; see \link{allele_matching}.}
 \item{sumstats, x}{A \code{Sumstats} object.}
 \item{p, z, n, beta, se, eaf, info}{Aligned
-numeric vectors. Optional vectors may be \code{NULL}.}
+numeric vectors. Optional vectors may be \code{NULL}. Missing \code{p}
+(\code{NA} or \code{NaN}) sets \code{logpvec} and present optional vectors
+to \code{NaN} at those positions. Other \code{p} values must be finite in
+\code{[0, 1]}; zero becomes \code{Inf} in \code{logpvec}.}
 \item{shards}{Optional character vector of shard labels in canonical order.}
 \item{...}{Reserved for S3 methods.}
 }
@@ -52,6 +55,9 @@ Loading prefers exact matches, swaps SNVs automatically, and uses
 \code{allow_indel_swaps} for indels. Effects and EAF describe the reference
 panel's \code{a1} (ALT) allele. \code{create_sumstats()} takes vectors already
 in that order and orientation; it performs no allele matching or swapping.
+The TSV \code{p} column is required; empty fields, \code{NA}, and \code{NaN}
+are missing values. Rows with missing \code{p} are validated, then dropped
+before matching. At \code{info} verbosity, loading reports the number dropped.
 Missing reference variants are represented by
 \code{NaN} in \code{logpvec(x)} and by \code{is_present(x) == FALSE}.
 Gzipped TSV input requires the suggested \pkg{R.utils} package so

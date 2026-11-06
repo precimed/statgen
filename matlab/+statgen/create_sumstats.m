@@ -9,6 +9,8 @@ function sumstats = create_sumstats(reference, p, z, n, beta, se, eaf, info)
 % converted to logpvec in the returned Sumstats object. Use load_sumstats for
 % raw TSV input; create_sumstats expects full-panel vectors already in the
 % reference panel's order and a1 (ALT) orientation. No allele swaps are applied.
+% NaN p marks an absent variant: logpvec and present optional vectors are NaN
+% there. Other p values must be finite in [0, 1]; p == 0 becomes Inf in logpvec.
 %
 % See also statgen.Sumstats, statgen.load_sumstats.
     if nargin < 2
@@ -25,12 +27,16 @@ function sumstats = create_sumstats(reference, p, z, n, beta, se, eaf, info)
     p_aligned = coerce_pvec_(p, num_snp_value, 'p');
     logp_aligned = statgen.internal.sumstats_derive_logp(p_aligned);
 
-    z_aligned = coerce_optional_vec_(z, num_snp_value, 'z');
-    n_aligned = coerce_optional_vec_(n, num_snp_value, 'n');
-    beta_aligned = coerce_optional_vec_(beta, num_snp_value, 'beta');
-    se_aligned = coerce_optional_vec_(se, num_snp_value, 'se');
-    eaf_aligned = coerce_optional_vec_(eaf, num_snp_value, 'eaf');
-    info_aligned = coerce_optional_vec_(info, num_snp_value, 'info');
+    optional_names = {'z', 'n', 'beta', 'se', 'eaf', 'info'};
+    optional_values = {z, n, beta, se, eaf, info};
+    aligned_optional = struct();
+    missing_p = isnan(p_aligned);
+    for i = 1:numel(optional_names)
+        nm = optional_names{i};
+        vals = coerce_optional_vec_(optional_values{i}, num_snp_value, nm);
+        if ~isempty(vals), vals(missing_p) = NaN; end
+        aligned_optional.(nm) = vals;
+    end
 
     n_shards = numel(reference.shards);
     out_shards = cell(n_shards, 1);
@@ -41,12 +47,12 @@ function sumstats = create_sumstats(reference, p, z, n, beta, se, eaf, info)
         out_shards{i} = statgen.SumstatsShard( ...
             s_ref.label, s_ref.checksum, ...
             logp_aligned(ix), ...
-            pick_optional_(z_aligned, ix), ...
-            pick_optional_(n_aligned, ix), ...
-            pick_optional_(beta_aligned, ix), ...
-            pick_optional_(se_aligned, ix), ...
-            pick_optional_(eaf_aligned, ix), ...
-            pick_optional_(info_aligned, ix));
+            pick_optional_(aligned_optional.z, ix), ...
+            pick_optional_(aligned_optional.n, ix), ...
+            pick_optional_(aligned_optional.beta, ix), ...
+            pick_optional_(aligned_optional.se, ix), ...
+            pick_optional_(aligned_optional.eaf, ix), ...
+            pick_optional_(aligned_optional.info, ix));
     end
     sumstats = statgen.Sumstats(out_shards);
 end
@@ -56,7 +62,7 @@ function out = coerce_pvec_(x, n, name)
     if isempty(out)
         error('statgen:sumstats', '%s is required', name);
     end
-    bad = ~isfinite(out) | out < 0 | out > 1;
+    bad = ~isnan(out) & (~isfinite(out) | out < 0 | out > 1);
     if any(bad)
         idx = find(bad, 1, 'first');
         error('statgen:sumstats', '%s(%d) must be finite numeric in [0, 1]', name, idx);

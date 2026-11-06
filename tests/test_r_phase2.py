@@ -469,7 +469,7 @@ def test_r_phase2_rejects_malformed_inputs(tmp_path):
             f"ref <- load_reference({json.dumps(str(SHARDED_REF))}); "
             f"saveRDS(list(metadata = list(schema = 'sumstats_cache/0.1', n_shards = 0L, shard_labels = character(), shard_checksums = character(), shard_start0 = numeric(), shard_stop0 = numeric()), logpvec = numeric()), {json.dumps(str(bad_cache))}); "
             f"ok1 <- FALSE; tryCatch(load_sumstats({json.dumps(str(bad_sumstats))}, ref), error = function(e) ok1 <<- grepl('p must be finite numeric', e$message)); "
-            f"ok1_nan <- FALSE; tryCatch(load_sumstats({json.dumps(str(bad_nan_sumstats))}, ref), error = function(e) ok1_nan <<- grepl('p must be finite numeric', e$message)); "
+            f"missing <- suppressWarnings(load_sumstats({json.dumps(str(bad_nan_sumstats))}, ref)); ok1_nan <- all(is.nan(logpvec(missing))) && !any(is_present(missing)); "
             f"ok1_allele <- FALSE; tryCatch(load_sumstats({json.dumps(str(bad_allele_sumstats))}, ref), error = function(e) ok1_allele <<- grepl('uppercase DNA bases', e$message)); "
             f"ok1_same <- FALSE; tryCatch(load_sumstats({json.dumps(str(same_allele_sumstats))}, ref), error = function(e) ok1_same <<- grepl('a1 and a2 must differ', e$message)); "
             f"ignored <- load_sumstats({json.dumps(str(ignored_chr_sumstats))}, ref); ok1_ignored <- sum(is_present(ignored)) == 1L; "

@@ -16,6 +16,11 @@ get_verbosity <- function() {
   .statgen_state$verbosity
 }
 
+.info <- function(message) {
+  if (get_verbosity() == "info") cat(message, "\n", sep = "", file = stderr())
+  invisible(NULL)
+}
+
 .validate_allow_indel_swaps <- function(value) {
   if (!is.logical(value) || length(value) != 1L || is.na(value)) {
     stop("allow_indel_swaps must be a logical scalar", call. = FALSE)
@@ -24,10 +29,9 @@ get_verbosity <- function() {
 }
 
 .report_variant_swaps <- function(path, label, swaps, strand_ambiguous, disabled_indels) {
-  if (get_verbosity() != "info") return(invisible(NULL))
   context <- sprintf("%s: shard %s: ", path, label)
-  if (swaps > 0L) cat(sprintf("%s%d successful allele swap(s)\n", context, swaps), file = stderr())
-  if (strand_ambiguous > 0L) cat(sprintf("%s%d strand-ambiguous A/T or C/G swap(s)\n", context, strand_ambiguous), file = stderr())
-  if (disabled_indels > 0L) cat(sprintf("%s%d indel row(s) unmatched because indel swaps are disabled\n", context, disabled_indels), file = stderr())
+  if (swaps > 0L) .info(sprintf("%s%d successful allele swap(s)", context, swaps))
+  if (strand_ambiguous > 0L) .info(sprintf("%s%d strand-ambiguous A/T or C/G swap(s)", context, strand_ambiguous))
+  if (disabled_indels > 0L) .info(sprintf("%s%d indel row(s) unmatched because indel swaps are disabled", context, disabled_indels))
   invisible(NULL)
 }

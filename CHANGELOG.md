@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hardcalls to the reference panel's `a1` (ALT) allele before ploidy scaling.
 
 ### Changed
+- Python, MATLAB/Octave, and R `load_sumstats` validate and drop rows with
+  missing `p` before matching instead of rejecting them, and report the number
+  dropped at `info` verbosity.
+- `create_sumstats` accepts missing `p` (`NaN`, or `NA` in R), setting
+  `logpvec` and present optional vectors to `NaN` at those positions.
 - MATLAB cache writers now default to MAT-file v7.3; Octave retains v7.
   Explicit `format` options continue to override the default.
 - When source alleles are reversed, Z scores and beta change sign and EAF
@@ -27,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Genotype caches now use `genotype_cache/0.2` to record allele swaps.
 
 ### Fixed
+- MATLAB/Octave sumstats loading now rejects infinite base-pair positions.
 - MATLAB cache writers now raise an error when a variable exceeds the selected
   MAT-file format's size limit instead of succeeding with an incomplete cache.
 - R variant matching now sorts allele hashes at or above
