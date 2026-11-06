@@ -12,6 +12,16 @@ REPO_ROOT = Path(__file__).parent.parent
 MATLAB_DIR = REPO_ROOT / "matlab"
 R_PACKAGE_DIR = REPO_ROOT / "R-package"
 R_EXTDATA_COPIES = {
+    "allele_swaps/reference.bim": "allele_swaps/reference.bim",
+    "allele_swaps/sumstats.tsv.gz": "allele_swaps/sumstats.tsv.gz",
+    "allele_swaps/expected.json": "allele_swaps/expected.json",
+    "allele_swaps/genotype/1.bed": "allele_swaps/genotype/1.bed",
+    "allele_swaps/genotype/1.bim": "allele_swaps/genotype/1.bim",
+    "allele_swaps/genotype/1.fam": "allele_swaps/genotype/1.fam",
+    "allele_swaps/genotype/X.bed": "allele_swaps/genotype/X.bed",
+    "allele_swaps/genotype/X.bim": "allele_swaps/genotype/X.bim",
+    "allele_swaps/genotype/X.fam": "allele_swaps/genotype/X.fam",
+    "allele_swaps/genotype/X.ploidy": "allele_swaps/genotype/X.ploidy",
     "reference_chr1.bim": "reference/sharded/1.bim",
     "reference_chrX.bim": "reference/sharded/X.bim",
     "traits.tsv.gz": "sumstats/traits.tsv.gz",

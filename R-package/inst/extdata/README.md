@@ -21,12 +21,17 @@ Current copied fixtures:
   summary-statistics fixture used by examples and vignettes.
 - `anno1.bed`, `anno2.bed`, and `grouped.annot` are byte-for-byte copies of
   tiny annotation fixtures under `tests/fixtures/annotations/`.
+- `allele_swaps/` is a byte-for-byte copy of
+  `tests/fixtures/allele_swaps/`, used by native R allele-swap tests. This
+  directory is ignored by git and must be prepared after a fresh clone.
 - `ld/` is an R-ready copy of `tests/fixtures/ld/python/` with an added
   `reference_cache.rds` and manifest `r_reference_cache` fields. It is used by
   examples and vignettes so installed-package examples can call `load_ld()`
   directly without mutating files under `inst/extdata`.
 
-Prepare copied R fixtures with:
+Prepare copied R fixtures before running native package tests or building the
+package from a fresh clone. Repository Makefile test/build targets do this
+automatically:
 
 ```sh
 make prepare-r-fixtures

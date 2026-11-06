@@ -42,6 +42,7 @@ load_reference <- function(path, shards = NULL) {
         bim$a1_hash64, bim$a2_hash64
       )
     }
+    for (shard in out) .validate_reference_keys(shard)
     return(.new_reference_panel(out))
   }
 
@@ -61,6 +62,7 @@ load_reference <- function(path, shards = NULL) {
       bim$a1_hash64[keep], bim$a2_hash64[keep]
     )
   }
+  for (shard in out) .validate_reference_keys(shard)
   .new_reference_panel(out)
 }
 
@@ -396,4 +398,21 @@ print.ReferencePanel <- function(x, ...) {
     return(direct)
   }
   .decode_text_payload(x[[paste0(field, "_text")]], x$num_snp, field)
+}
+
+.validate_reference_keys <- function(shard) {
+  .check_unique_variant_keys(bp(shard), a1_hash64(shard), a2_hash64(shard),
+                             sprintf("reference shard %s", shard$label), "reference")
+  snv <- is_single_nucleotide_variant(shard)
+  positions <- bp(shard)[snv]
+  a <- a1_hash64(shard)[snv]
+  b <- a2_hash64(shard)[snv]
+  reciprocal <- .lookup_variant_candidates(positions, a, b, positions, b, a,
+                                          seq_along(positions), rep.int(TRUE, length(positions)),
+                                          shard$label, "reference")$rows
+  if (any(!is.na(reciprocal))) {
+    stop(sprintf("reference shard %s: reciprocal SNV keys are not allowed at bp=%d",
+                 shard$label, positions[which(!is.na(reciprocal))[[1]]]), call. = FALSE)
+  }
+  invisible(NULL)
 }

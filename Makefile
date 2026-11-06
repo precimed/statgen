@@ -28,6 +28,8 @@ prepare-r-fixtures:
 	cp tests/fixtures/genotype/sharded/X.bim R-package/inst/extdata/genotype_X.bim
 	cp tests/fixtures/genotype/sharded/X.fam R-package/inst/extdata/genotype_X.fam
 	cp tests/fixtures/genotype/sharded/X.ploidy R-package/inst/extdata/genotype_X.ploidy
+	mkdir -p R-package/inst/extdata/allele_swaps
+	cp -r tests/fixtures/allele_swaps/. R-package/inst/extdata/allele_swaps/
 	$(RM) -r R-package/inst/extdata/ld
 	mkdir -p R-package/inst/extdata/ld
 	cp tests/fixtures/ld/python/ld_manifest.json R-package/inst/extdata/ld/ld_manifest.json

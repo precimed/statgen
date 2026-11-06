@@ -34,3 +34,6 @@ octave-workspace
 
 # Manual testing
 testing/*
+
+# Derived R package copies prepared by make prepare-r-fixtures
+R-package/inst/extdata/allele_swaps/

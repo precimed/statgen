@@ -12,13 +12,14 @@ se_vec <- function(x, ...) UseMethod("se_vec")
 eaf_vec <- function(x, ...) UseMethod("eaf_vec")
 info_vec <- function(x, ...) UseMethod("info_vec")
 
-load_sumstats <- function(path, reference) {
+load_sumstats <- function(path, reference, allow_indel_swaps = FALSE) {
+  allow_indel_swaps <- .validate_allow_indel_swaps(allow_indel_swaps)
   path <- .validate_path_scalar(path, "path")
   if (!inherits(reference, "ReferencePanel")) {
     stop("reference must be a ReferencePanel", call. = FALSE)
   }
   df <- .parse_sumstats_tsv(path)
-  .build_sumstats_panel(df, reference, path)
+  .build_sumstats_panel(df, reference, path, allow_indel_swaps)
 }
 
 create_sumstats <- function(reference, p, z = NULL, n = NULL,
@@ -353,7 +354,7 @@ print.Sumstats <- function(x, ...) {
   }
 }
 
-.build_sumstats_panel <- function(df, reference, source_path) {
+.build_sumstats_panel <- function(df, reference, source_path, allow_indel_swaps) {
   n <- num_snp(reference)
   aligned_p <- rep.int(NaN, n)
   aligned_optional <- lapply(.sumstats_optional_cols, function(field) {
@@ -378,14 +379,17 @@ print.Sumstats <- function(x, ...) {
       src_idx <- integer()
     }
     if (!length(src_idx)) {
-      warning(sprintf("%s: shard %s has no matching source rows; representing as all missing", source_path, ref_shard$label), call. = FALSE)
+      warning(sprintf("%s: no matching source rows for reference shard '%s'", source_path, ref_shard$label), call. = FALSE)
       next
     }
-    local_match <- .match_variant_keys(
+    match <- .match_variant_keys(
       bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
       df$bp[src_idx], src_a1_hash64[src_idx], src_a2_hash64[src_idx],
-      ref_shard$label, "sumstats"
+      ref_shard$label, "sumstats", allow_indel_swaps
     )
+    local_match <- match$source_rows
+    .report_variant_swaps(source_path, ref_shard$label, sum(match$is_allele_swapped),
+                          match$num_strand_ambiguous, match$num_disabled_indels)
     has_match <- !is.na(local_match)
     matched_src <- src_idx[local_match[has_match]]
     aligned_idx <- seq.int(start, stop)[has_match]
@@ -396,21 +400,15 @@ print.Sumstats <- function(x, ...) {
       }
     }
 
-    matched_source_mask <- rep.int(FALSE, length(src_idx))
-    matched_source_mask[local_match[has_match]] <- TRUE
-    unmatched_src <- src_idx[!matched_source_mask]
-    swapped <- .count_variant_key_intersections(
-      bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
-      df$bp[unmatched_src], src_a2_hash64[unmatched_src], src_a1_hash64[unmatched_src]
-    )
-    if (swapped > 0L) {
-      warning(
-        sprintf(
-          "%s: shard %s: %d unmatched sumstats variant(s) would match the reference if a1/a2 were swapped; variants remain unmatched",
-          source_path, ref_shard$label, swapped
-        ),
-        call. = FALSE
-      )
+    swapped_idx <- seq.int(start, stop)[match$is_allele_swapped]
+    for (field in c("z", "beta", "eaf")) {
+      if (!is.null(aligned_optional[[field]])) {
+        values <- aligned_optional[[field]][swapped_idx]
+        aligned_optional[[field]][swapped_idx] <- if (field == "eaf") 1 - values else -values
+      }
+    }
+    if (!any(has_match)) {
+      warning(sprintf("%s: no matching source rows for reference shard '%s'", source_path, ref_shard$label), call. = FALSE)
     }
   }
 

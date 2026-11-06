@@ -14,6 +14,7 @@
 \alias{ploidy_female}
 \alias{source_layout}
 \alias{source_row0}
+\alias{is_allele_swapped}
 \alias{is_subject_present}
 \alias{fetch_genotypes_int8}
 \alias{fetch_genotypes}
@@ -23,7 +24,7 @@ Load PLINK bfile-backed genotype metadata, inspect reference-aligned genotype
 panels, cache metadata, and fetch hardcall genotype slices from BED files.
 }
 \usage{
-load_genotype(bfile_prefix, reference)
+load_genotype(bfile_prefix, reference, allow_indel_swaps = FALSE)
 save_genotype_cache(panel, path)
 load_genotype_cache(path, shards = NULL)
 
@@ -39,6 +40,7 @@ ploidy_male(x, ...)
 ploidy_female(x, ...)
 source_layout(x, ...)
 source_row0(x, ...)
+is_allele_swapped(x, ...)
 is_subject_present(x, shard, ...)
 
 fetch_genotypes_int8(x, snp_indices, bed_path = NULL, ...)
@@ -49,6 +51,8 @@ fetch_genotypes(x, snp_indices, bed_path = NULL,
 \item{bfile_prefix}{Character scalar PLINK bfile prefix, without suffixes.
 Use \code{@} as a shard-label placeholder for sharded input.}
 \item{reference}{A \code{ReferencePanel}.}
+\item{allow_indel_swaps}{Logical scalar enabling swaps for allele pairs with
+one single-base and one longer allele. SNV swaps are always enabled.}
 \item{panel, x}{A \code{GenotypePanel}.}
 \item{path}{Character scalar path to an RDS genotype metadata cache.}
 \item{shards}{Optional character vector of shard labels in canonical order.}
@@ -64,14 +68,18 @@ Use \code{@} as a shard-label placeholder for sharded input.}
 \code{load_genotype()} and \code{load_genotype_cache()} return
 \code{GenotypePanel} S3 objects. Metadata accessors return ordinary R vectors.
 \code{fetch_genotypes_int8()} returns an integer matrix with samples as rows
-and requested SNPs as columns, using \code{-1} for missing hardcalls.
+and requested SNPs as columns, counting reference \code{a1} and using
+\code{-1} for missing hardcalls.
 \code{fetch_genotypes()} returns a numeric matrix with missing calls as
 \code{NaN}.
 }
 \details{
 Genotype panels are reference-aligned metadata handles for PLINK BED payloads.
 Hardcalls are decoded on demand; caches store only metadata needed to locate
-and map BED rows.
+and map BED rows. Exact matches take priority over allele swaps.
+\code{is_allele_swapped()} returns a logical vector on the full reference axis;
+exact matches and absent variants are false. Swapped nonmissing calls are
+flipped before ploidy scaling.
 }
 \examples{
 ref_path <- system.file("extdata", "reference_chr1.bim", package = "statgen")

@@ -73,8 +73,12 @@ names(.single_base_hash64) <- c("A", "C", "G", "T")
   bit64::as.integer64(h1) * .hash64_shift + bit64::as.integer64(h2)
 }
 
+.is_single_base_hash <- function(hash) {
+  hash %in% .single_base_hash64
+}
+
 .is_single_nucleotide_variant_hash <- function(a1_hash, a2_hash) {
-  a1_hash %in% .single_base_hash64 & a2_hash %in% .single_base_hash64
+  .is_single_base_hash(a1_hash) & .is_single_base_hash(a2_hash)
 }
 
 .is_strand_ambiguous_hash <- function(a1_hash, a2_hash) {

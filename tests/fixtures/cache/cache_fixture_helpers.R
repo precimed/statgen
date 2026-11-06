@@ -49,8 +49,10 @@ statgen_generate_r_cache_fixture <- function(object_name) {
       file.path(cache_dir, "annotations_r_annotations_cache_0_2.rds")
     )
   } else if (identical(object_name, "genotype")) {
-    panel <- load_genotype(file.path("tests", "fixtures", "genotype", "sharded", "@"), reference)
-    save_genotype_cache(panel, file.path(cache_dir, "genotype_r_genotype_cache_0_1.rds"))
+    root <- file.path("tests", "fixtures", "allele_swaps")
+    reference <- load_reference(file.path(root, "reference.bim"))
+    panel <- load_genotype(file.path(root, "genotype", "@"), reference, allow_indel_swaps = TRUE)
+    save_genotype_cache(panel, file.path(cache_dir, "genotype_r_genotype_cache_0_2.rds"))
   } else {
     stop(sprintf("unknown cache fixture object: %s", object_name), call. = FALSE)
   }

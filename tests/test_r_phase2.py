@@ -485,7 +485,7 @@ def test_r_phase2_rejects_malformed_inputs(tmp_path):
 
 @pytest.mark.r
 @skipif_no_rscript
-def test_r_sumstats_swapped_allele_warning_and_duplicate_key_error(tmp_path):
+def test_r_sumstats_swapped_allele_alignment_and_duplicate_key_error(tmp_path):
     swapped = tmp_path / "swapped.tsv"
     swapped.write_text(
         "chr\tbp\ta1\ta2\tp\n"
@@ -503,9 +503,9 @@ def test_r_sumstats_swapped_allele_warning_and_duplicate_key_error(tmp_path):
             f"ref <- load_reference({json.dumps(str(SHARDED_REF))}, shards = '1'); "
             "msg <- NULL; "
             f"s <- withCallingHandlers(load_sumstats({json.dumps(str(swapped))}, ref), warning = function(w) {{ msg <<- paste(msg, conditionMessage(w), sep='|'); invokeRestart('muffleWarning') }}); "
-            "stopifnot(grepl('would match the reference if a1/a2 were swapped', msg)); "
-            "stopifnot(identical(as.integer(is_present(s)), c(1L, 0L, 0L, 0L, 0L))); "
-            f"ok <- FALSE; tryCatch(load_sumstats({json.dumps(str(duplicate))}, ref), error = function(e) ok <<- grepl('duplicate sumstats matching key', e$message)); "
+            "stopifnot(!grepl('would match the reference', paste(msg, collapse='|'))); "
+            "stopifnot(identical(as.integer(is_present(s)), c(1L, 1L, 0L, 0L, 0L))); "
+            f"ok <- FALSE; tryCatch(load_sumstats({json.dumps(str(duplicate))}, ref), error = function(e) ok <<- grepl('duplicate sumstats/reference matching key', e$message)); "
             "stopifnot(ok)"
         )
     )
@@ -534,10 +534,10 @@ def test_r_variant_matching_preserves_integer64_hashes_above_double_precision(tm
             f"s <- suppressWarnings(load_sumstats({json.dumps(str(sumstats_path))}, ref)); "
             "h <- .allele_hash64(c('ACGT', 'TGCA', 'CCCCCCCC', 'GGGGGGGG')); "
             "direct <- .match_variant_keys(c(100L, 200L), h[1:2], h[3:4], c(200L, 100L), h[c(2, 1)], h[c(4, 3)], '1', 'sumstats'); "
-            "dup_ok <- FALSE; tryCatch(.count_variant_key_intersections(c(100L), h[1], h[3], c(100L, 100L), h[c(1, 1)], h[c(3, 3)]), error = function(e) dup_ok <<- grepl('duplicate variant matching key', e$message)); "
+            "dup_ok <- FALSE; tryCatch(.match_variant_keys(c(100L), h[1], h[3], c(100L, 100L), h[c(1, 1)], h[c(3, 3)], '1', 'variant'), error = function(e) dup_ok <<- grepl('duplicate variant/reference matching key', e$message)); "
             "cat(paste(as.integer(is_present(s)), collapse=','), '\\n'); "
             "cat(paste(format(logpvec(s), digits=17), collapse=','), '\\n'); "
-            "cat(paste(direct, collapse=','), '\\n'); "
+            "cat(paste(direct$source_rows, collapse=','), '\\n'); "
             "cat(as.character(dup_ok), '\\n')"
         )
     )
@@ -547,3 +547,44 @@ def test_r_variant_matching_preserves_integer64_hashes_above_double_precision(tm
     np.testing.assert_allclose(_parse_float_csv(lines[1]), np.array([2.0, -math.log10(0.2)]))
     assert lines[2] == "2,1"
     assert lines[3] == "TRUE"
+
+
+# Hashes of these alleles are >= 0x7FF0000000000000, so their raw bits read as
+# NaN when an integer64 is treated as a double. Two such values are needed to
+# expose unstable grouping under base::order().
+NAN_RANGE_A2_X = "GTAGAA"
+NAN_RANGE_A2_Y = "GTAGAC"
+
+
+@pytest.mark.r
+@skipif_no_rscript
+def test_r_variant_keys_sort_hashes_in_double_nan_bit_range(tmp_path):
+    x, y = NAN_RANGE_A2_X, NAN_RANGE_A2_Y
+    ref_path = tmp_path / "ref.bim"
+    ref_path.write_text(f"1\trs1\t0\t100\tT\t{x}\n1\trs2\t0\t100\tT\t{y}\n")
+    dup_bim = tmp_path / "dup.bim"
+    dup_bim.write_text(
+        f"1\trs1\t0\t100\tT\t{x}\n1\trs2\t0\t100\tT\t{y}\n1\trs3\t0\t100\tT\t{x}\n"
+    )
+    exact = tmp_path / "exact.tsv"
+    exact.write_text(f"chr\tbp\ta1\ta2\tp\n1\t100\tT\t{y}\t0.001\n1\t100\tT\t{x}\t0.01\n")
+    dup_sumstats = tmp_path / "dup.tsv"
+    dup_sumstats.write_text(
+        "chr\tbp\ta1\ta2\tp\n"
+        f"1\t100\tT\t{x}\t0.01\n1\t100\tT\t{y}\t0.1\n1\t100\tT\t{x}\t0.5\n"
+    )
+    result = run_rscript(
+        _source_phase2_script(
+            f"h <- .allele_hash64(c({json.dumps(x)}, {json.dumps(y)}, 'T')); "
+            "stopifnot(all(h[1:2] >= bit64::as.integer64('9218868437227405312'))); "
+            "fails <- function(f) tryCatch({ f(); FALSE }, error = function(e) grepl('duplicate', e$message)); "
+            "stopifnot(fails(function() .check_unique_variant_keys(rep(1L, 3L), h[c(3, 3, 3)], h[c(1, 2, 1)], 't'))); "
+            "stopifnot(fails(function() .check_unique_variant_keys(rep(1L, 3L), h[c(1, 2, 1)], h[c(3, 3, 3)], 't'))); "
+            f"stopifnot(fails(function() load_reference({json.dumps(str(dup_bim))}))); "
+            f"ref <- load_reference({json.dumps(str(ref_path))}); "
+            f"stopifnot(fails(function() suppressWarnings(load_sumstats({json.dumps(str(dup_sumstats))}, ref)))); "
+            f"s <- suppressWarnings(load_sumstats({json.dumps(str(exact))}, ref)); "
+            "stopifnot(all.equal(logpvec(s), c(2, 3)))"
+        )
+    )
+    assert result.returncode == 0, result.stderr
