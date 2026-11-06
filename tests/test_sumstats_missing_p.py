@@ -10,7 +10,7 @@ from statgen import get_verbosity, set_verbosity
 from statgen.reference import load_reference
 from statgen.sumstats import create_sumstats, load_sumstats, load_sumstats_cache
 from tests.conftest import (
-    FIXTURES_DIR, R_PACKAGE_DIR, run_octave, run_rscript,
+    FIXTURES_DIR, R_PACKAGE_DIR, matlab_output_text, run_octave, run_rscript,
     skipif_no_octave, skipif_no_rscript,
 )
 
@@ -151,8 +151,9 @@ def test_octave_all_missing_p_preserves_optional_presence(tmp_path):
         "for k = 1:numel(fields); v = s.(fields{k}); assert(numel(v) == 5 && all(isnan(v))); end;"
     )
     assert result.returncode == 0, result.stderr
-    assert "no matching source rows" in result.stdout + result.stderr
-    assert "is absent" not in result.stdout + result.stderr
+    output = matlab_output_text(result.stdout + result.stderr)
+    assert "no matching source rows" in output
+    assert "is absent" not in output
 
 
 @pytest.mark.r
