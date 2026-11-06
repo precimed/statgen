@@ -10,6 +10,7 @@ classdef Sumstats
 % Source variants absent from the reference-aligned data have NaN in logpvec
 % and is_present false. A source p-value of 0 is represented as Inf in logpvec.
 % Optional statistic vectors are [] when the source field was absent.
+% zvec and beta_vec are oriented to reference a1 (ALT); eaf_vec is its frequency.
 %
 % Common properties:
 %   num_snp     Number of SNPs in the aligned reference.

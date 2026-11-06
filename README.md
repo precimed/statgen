@@ -5,7 +5,7 @@ reference-aligned statistical genetics data: reference variants, genotypes, LD,
 annotations, and GWAS summary statistics.
 
 All panel objects use reference coordinates. Genome build, contig naming, and
-allele orientation should be resolved upstream by
+strand should be resolved upstream by
 [genomatch](https://github.com/precimed/genomatch) or an equivalent pipeline.
 
 ## Where to Start
@@ -79,6 +79,15 @@ allele orientation should be resolved upstream by
   `(1, 2)` for chrX, with a warning for chrX. Provide `.ploidy` for PAR/non-PAR
   mixtures or nonstandard chrX encodings.
 - Shard objects are internal; users work with panel objects and `select_shards`.
+
+## Allele Matching
+
+Results describe the reference panel's `a1` (ALT) allele. Loading automatically
+adjusts reversed SNP alleles. Swapping insertion/deletion alleles requires the
+`allow_indel_swaps` option.
+
+See the [allele matching guide](docs/ALLELE_MATCHING.md) for examples, allele
+roles, and genotype cache migration.
 
 ## Setup
 
@@ -205,18 +214,18 @@ matrix representation is stored in `.mat` files.
 
 ### GenotypePanel
 
-- `load_genotype(bfile_prefix, reference)` loads PLINK 1 genotype metadata and
-  aligns it to a `ReferencePanel`. `bfile_prefix` may be a single prefix or an
+- `load_genotype(bfile_prefix, reference, allow_indel_swaps=False)` loads PLINK 1
+  genotype metadata and aligns it to a `ReferencePanel`. `bfile_prefix` may be a single prefix or an
   `@`-sharded prefix.
 - `panel.fetch_genotypes(snp_indices)` returns selected genotype calls without
-  loading the full BED file. It defaults to raw PLINK-decoded calls; use the
-  `ploidy_scaled` haploid mode to map male chrX ploidy `1` calls from `0/2` to
-  `0/1`. In MATLAB, `snp_indices` are one-based panel SNP indices; requested
+  loading the full BED file. Counts are oriented to the reference panel's `a1`
+  (ALT) allele on the raw diploid scale by default; use `ploidy_scaled` to map
+  male chrX ploidy `1` calls from `0/2` to `0/1`. In MATLAB, `snp_indices` are one-based panel SNP indices; requested
   SNPs must be present in the genotype source.
 - `panel.fetch_genotypes_int8(snp_indices)` returns selected hardcalls as compact
   integer calls.
 - `panel.is_present` is a boolean mask in reference coordinates for variants
-  present after alignment.
+  present after alignment; `panel.is_allele_swapped` marks accepted swaps.
 - `panel.fid`, `panel.iid`, `panel.sex`, `panel.is_male`, and
   `panel.is_female` expose sample metadata.
 - `panel.save_cache(path)` and `load_genotype_cache(...)` save and reload
@@ -224,8 +233,8 @@ matrix representation is stored in `.mat` files.
 
 ### Sumstats
 
-- `load_sumstats(path, reference)` loads a `.tsv.gz` summary-statistics file and
-  aligns rows by `chr:bp:a1:a2`.
+- `load_sumstats(path, reference, allow_indel_swaps=False)` loads a `.tsv.gz`
+  summary-statistics file using the [allele matching policy](#allele-matching).
 - Input files require `p`; `z` and `n` are optional and warn when absent or
   incomplete. Common aliases such as `POS`, `EffectAllele`, and `OtherAllele`
   are accepted.
@@ -234,6 +243,8 @@ matrix representation is stored in `.mat` files.
 - `sumstats.logpvec`, `sumstats.zvec`, and `sumstats.nvec` expose aligned
   vectors. Optional vectors are `None` in Python or empty in MATLAB when
   absent.
+- `sumstats.beta_vec`, `sumstats.zvec`, and `sumstats.eaf_vec` are oriented
+  to the reference panel's `a1` (ALT) allele; EAF is its frequency.
 - `sumstats.is_present` is a boolean mask in reference coordinates for variants
   present after alignment.
 - `sumstats.select_shards(shards)` subsets by shard label.

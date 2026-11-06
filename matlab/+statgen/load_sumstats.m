@@ -4,8 +4,9 @@ function sumstats = load_sumstats(path, reference, varargin)
 %   sumstats = statgen.load_sumstats(path, reference)
 %   sumstats = statgen.load_sumstats(path, reference, 'allow_indel_swaps', true)
 %
-% SNV swaps are automatic; indel swaps are opt-in. Signed effects and EAF
-% are oriented to reference a1 (ALT).
+% SNV swaps are automatic; indel swaps are opt-in. Values are oriented to the
+% reference panel's a1 (ALT) allele. See the guide for details:
+% https://github.com/precimed/statgen/blob/HEAD/docs/ALLELE_MATCHING.md
 %
 % Loads one TSV or TSV.GZ summary-statistics file for one trait or source; this
 % input is not sharded. Rows are aligned to reference SNPs by chromosome,

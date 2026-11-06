@@ -140,6 +140,18 @@ annotations <- union_annotations(
 genotype <- load_genotype("source/genotypes/chr@", reference)
 ```
 
+To enable indel swaps when loading your data:
+
+```r
+trait_a <- load_sumstats("source/sumstats/trait_a.tsv.gz", reference,
+                         allow_indel_swaps = TRUE)
+genotype <- load_genotype("source/genotypes/chr@", reference,
+                          allow_indel_swaps = TRUE)
+```
+
+See the [allele matching guide](ALLELE_MATCHING.md), or `?allele_matching` in R,
+for the loading options and how results are adjusted.
+
 Use `default_chrX_sex = "male"` when the analysis should use male chrX LD by
 default.
 
@@ -182,12 +194,12 @@ pruned_snp_indices <- which(is.finite(trait_a_pruned) & is_present(genotype))
 pruned_genotypes <- fetch_genotypes(genotype, pruned_snp_indices)
 
 dim(pruned_genotypes)
+is_allele_swapped(genotype)[pruned_snp_indices]
 ```
 
 R SNP indices are one-based. Genotype matrices have samples as rows and
-requested SNPs as columns. `fetch_genotypes()` returns raw PLINK-decoded calls
-by default; pass `haploid_mode = "ploidy_scaled"` when haploid calls should be
-mapped onto declared biological ploidy.
+requested SNPs as columns. Calls use the raw diploid scale by default; pass
+`haploid_mode = "ploidy_scaled"` to adjust for biological ploidy.
 
 When using a genotype metadata cache, the original BED files must still be
 available. If they moved, pass a replacement `bed_path` to the fetch function.

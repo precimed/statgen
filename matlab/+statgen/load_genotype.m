@@ -4,8 +4,9 @@ function panel = load_genotype(bfile_prefix, reference, varargin)
 %   genotype = statgen.load_genotype(bfile_prefix, reference)
 %   genotype = statgen.load_genotype(bfile_prefix, reference, 'allow_indel_swaps', true)
 %
-% SNV swaps are automatic; indel swaps are opt-in. Fetched counts are oriented
-% to reference a1 (ALT); is_allele_swapped records the matched orientation.
+% SNV swaps are automatic; indel swaps are opt-in. Values are oriented to the
+% reference panel's a1 (ALT) allele. See the guide for details:
+% https://github.com/precimed/statgen/blob/HEAD/docs/ALLELE_MATCHING.md
 %
 % bfile_prefix may be either a single non-sharded PLINK bed/bim/fam prefix,
 % such as 'genotypes/all', or an @-sharded template, such as 'genotypes/chr@'.
