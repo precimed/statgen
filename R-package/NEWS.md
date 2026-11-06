@@ -1,3 +1,8 @@
+# statgen 0.4.1
+
+* Long alleles, such as structural-variant sequences, are now matched on up to their first 1,000,000 bases instead of their first 150. `load_reference()`, `load_genotype()`, and `load_sumstats()` warn once per file if any allele is longer than that.
+* Reference caches written by earlier versions, including those inside existing LD distributions, may fail to match alleles longer than 150 bases; reference checksums do not detect this. Rebuild the cache with `load_reference()` and `save_reference_cache()` to fix it. Alleles of 150 bases or fewer are unaffected.
+
 # statgen 0.4.0
 
 * Summary-statistics and genotype loaders now match reversed SNVs, including A/T and C/G under the same-strand assumption. Set `allow_indel_swaps = TRUE` to also match reversed indels with exactly one single-base allele.

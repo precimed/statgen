@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-07
+
 ### Changed
 - Long alleles, such as structural variant sequences, are now matched on up to
   their first 1,000,000 bases instead of their first 150 (Python, MATLAB/Octave,
