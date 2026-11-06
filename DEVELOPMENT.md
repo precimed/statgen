@@ -46,10 +46,16 @@ parser on Python versions without `tomllib`.
 
 ## R package documentation and checks
 
-Run `make prepare-r-fixtures` before directly building the R package or its
-vignette from a checkout. This prepares bundled copies of the canonical test
-fixtures. The repository's R test/build and documentation targets already run
-this preparation step.
+R package fixture storage and synchronization are defined in
+[spec/testing.md](spec/testing.md); CRAN-facing runtime and test requirements
+are defined in [spec/R.md](spec/R.md#cran-facing-tests).
+
+Commit bundled fixture copies under `R-package/inst/extdata/` so native R
+package builds, vignettes, and CRAN checks work from a fresh checkout without
+a preparation step. When canonical fixtures change, run
+`make prepare-r-fixtures` and commit the refreshed copies with the source
+changes. The repository's R test/build and documentation targets also refresh
+these copies automatically.
 
 ## Releases (brief)
 

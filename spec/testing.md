@@ -29,7 +29,10 @@ python tests/fixtures/generate.py
 
 R package `inst/extdata/` fixtures that are exact portable-format duplicates of
 canonical files under `tests/fixtures/` are derived copies, not independent
-fixture sources. Repository R package test/build targets must prepare those
+fixture sources. Commit these copies so a fresh checkout supports native R
+package builds and tests without a preparation step. Regenerate them with
+`make prepare-r-fixtures` when canonical fixtures change.
+Repository R package test/build targets must prepare those
 copies before invoking R package tests or `R CMD build`, and repository pytest
 should verify that the prepared copies match their canonical sources.
 

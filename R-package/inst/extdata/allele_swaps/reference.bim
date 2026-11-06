@@ -1,0 +1,16 @@
+1	exact	0	100	A	G
+1	swap	0	200	A	G
+1	amb_at	0	300	A	T
+1	amb_cg	0	400	C	G
+1	indel	0	500	A	AG
+1	recip_indel_1	0	600	A	AT
+1	recip_indel_2	0	600	AT	A
+1	long_exact	0	700	AC	GT
+1	long_no_swap	0	800	AC	GT
+1	no_reuse_1	0	900	A	AC
+1	no_reuse_2	0	900	AC	A
+1	missing_exact	0	1000	A	G
+1	absent	0	1100	C	T
+X	x_swap	0	100	A	G
+X	x_exact	0	200	C	T
+X	x_indel	0	300	A	AT

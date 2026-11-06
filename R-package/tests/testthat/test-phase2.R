@@ -78,7 +78,7 @@ test_that("numeric errors report the original row and value without fread warnin
   ref <- load_reference(.phase2_reference_template(), shards = "1")
   columns <- c("chr", "bp", "a1", "a2", "p", "z", "n", "beta", "se", "eaf", "info")
   for (field in c("bp", "p", "z", "n", "beta", "se", "eaf", "info")) {
-    path <- tempfile(fileext = ".tsv")
+    path <- tempfile(pattern = "def-", fileext = ".tsv")
     row <- c("1", "100", "A", "G", "NA", "1", "2", "3", "4", "0.5", "6")
     row[match(field, columns)] <- "abc"
     writeLines(c(
@@ -90,7 +90,7 @@ test_that("numeric errors report the original row and value without fread warnin
     expect_no_warning(msg <- tryCatch(load_sumstats(path, ref), error = conditionMessage))
     expect_match(msg, "row 3:", fixed = TRUE)
     expect_match(msg, sQuote("abc"), fixed = TRUE)
-    expect_false(grepl("def", msg, fixed = TRUE))
+    expect_false(grepl(sQuote("def"), msg, fixed = TRUE))
     if (field == "bp") {
       expect_match(msg, "bp is not an integer:", fixed = TRUE)
       expect_false(grepl("or missing", msg, fixed = TRUE))

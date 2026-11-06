@@ -181,11 +181,7 @@ ordinary R package behavior: package load, exported API availability, tiny
 source loading, non-LD cache round-trips, tiny `.npz` LD loading and
 operations, and R LD reference-cache sidecar preparation.
 
-Portable-format R extdata fixtures that duplicate canonical repository
-fixtures under `tests/fixtures/` should be prepared by repository tooling
-before `R CMD build`, not maintained as second committed source copies under
-`R-package/inst/extdata/`. R-native fixtures with no portable counterpart may
-be committed directly under `inst/extdata/`.
+Fixture storage and synchronization follow [testing.md](testing.md).
 
 CRAN tests must not invoke Python, MATLAB/Octave, PLINK, shell scripts, or
 internet access. Broader checks belong outside CRAN-facing tests.
