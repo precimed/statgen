@@ -26,6 +26,11 @@ function out = allele_hash64(alleles, workspace_bytes)
     for j = 1:longest
         powers(j + 1, :) = mod(powers(j, :) .* bases, p);
     end
+    % Gather from contiguous vectors rather than repeatedly indexing a column
+    % of the two-lane matrix for every byte in each batch.
+    power1 = powers(:, 1);
+    power2 = powers(:, 2);
+    clear powers;
     % Each reduction has at most 8192 terms, keeping double sums exact.
     block_chars = min(8192, max(1, floor(workspace_bytes / 64)));
     % PERF: bucket dispatch and bounded batches replace whole-vector scans.
@@ -40,7 +45,7 @@ function out = allele_hash64(alleles, workspace_bytes)
             batch = alleles(rows);
             % Long alleles are sliced directly into capped byte blocks below;
             % avoid copying a complete million-base prefix for every batch row.
-            h = powers(lengths + 1, :);
+            h = [power1(lengths + 1), power2(lengths + 1)];
             for offset = 0:block_chars:width-1
                 last = min(width, offset + block_chars);
                 if offset == 0 && width <= block_chars
@@ -53,10 +58,10 @@ function out = allele_hash64(alleles, workspace_bytes)
                 active = bsxfun(@le, cols, lengths);
                 x = (double(uint8(chars)) + 1) .* active;
                 positions = max(0, bsxfun(@minus, lengths, cols)) + 1;
-                for lane = 1:2
-                    weights = reshape(powers(positions(:), lane), size(positions));
-                    h(:, lane) = mod(h(:, lane) + sum(x .* weights, 2), p);
-                end
+                weights = reshape(power1(positions(:)), size(positions));
+                h(:, 1) = mod(h(:, 1) + sum(x .* weights, 2), p);
+                weights = reshape(power2(positions(:)), size(positions));
+                h(:, 2) = mod(h(:, 2) + sum(x .* weights, 2), p);
             end
             out(rows) = bitshift(uint64(h(:, 1)), 32) + uint64(h(:, 2));
         end
