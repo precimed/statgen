@@ -153,12 +153,12 @@ def test_r_shared_vectors_legacy_and_silent_helpers(tmp_path):
     assert output.read_text().splitlines() == [v['expected'] for v in VECTORS]
 
 
-def _with_cap_warnings(script):
+def _with_cap_warnings(script, state='on'):
     # MATLAB tests share an engine: restore warning state on success and error.
     saved = "statgen_test_cap_warning"
     return (
         f"{saved}=warning('query','statgen:allele_hash'); "
-        "warning('on','statgen:allele_hash'); try; " + script + "; "
+        f"warning('{state}','statgen:allele_hash'); try; " + script + "; "
         f"catch ME; warning({saved}.state,'statgen:allele_hash'); rethrow(ME); end; "
         f"warning({saved}.state,'statgen:allele_hash');"
     )
@@ -184,12 +184,14 @@ def test_octave_loader_warnings_collision_roundtrip_and_full_validation(tmp_path
     assert console.count('allele(s) exceed hash cap') == 3
     assert 'row 3, column a1, length 1000001' in console
     # Validate oversized strings in blocks, including the suffix beyond the cap.
-    result = run_octave(
-        "a=repmat('A',1,10000000); lastwarn(''); "
+    # Fail on helper cap warnings directly; lastwarn also records unrelated
+    # runtime warnings and does not establish which warning was emitted.
+    result = run_octave(_with_cap_warnings(
+        "a=repmat('A',1,10000000); "
         "[bad,lens]=statgen.internal.invalid_dna_allele({a}); assert(~bad && lens==10000000); "
         "h=statgen.internal.allele_hash64({a}); assert(h==statgen.internal.allele_hash64({a(1:1000000)})); "
-        "a(end)='N'; assert(statgen.internal.invalid_dna_allele({a})); "
-        "[msg,id]=lastwarn(); assert(isempty(msg));", timeout=120)
+        "a(end)='N'; assert(statgen.internal.invalid_dna_allele({a}));",
+        state='error'), timeout=120)
     assert result.returncode == 0, result.stderr
     # The full source path must also accept a valid 10 MB sequence and reject invalid suffixes.
     bim, _, _, _ = write_sources(tmp_path, 10_000_000)
@@ -328,10 +330,13 @@ def test_r_batch_offsets_beyond_integer_range():
 def test_octave_cap_warning_settings_restored():
     success = _with_cap_warnings("warning('statgen:allele_hash','cap warning probe')")
     failure = _with_cap_warnings("error('statgen:warning_test','expected test failure')")
+    cap_error = _with_cap_warnings("warning('statgen:allele_hash','cap warning probe')", state='error')
     result = run_octave(
         "original_cap_state=warning('query','statgen:allele_hash'); warning('off','statgen:allele_hash'); try; "
         + success + " state=warning('query','statgen:allele_hash'); assert(strcmp(state.state,'off')); "
         "failed=false; try; " + failure + " catch ME; failed=strcmp(ME.identifier,'statgen:warning_test'); end; assert(failed); "
+        "state=warning('query','statgen:allele_hash'); assert(strcmp(state.state,'off')); "
+        "failed=false; try; " + cap_error + " catch ME; failed=strcmp(ME.identifier,'statgen:allele_hash'); end; assert(failed); "
         "state=warning('query','statgen:allele_hash'); assert(strcmp(state.state,'off')); "
         "catch ME; warning(original_cap_state.state,'statgen:allele_hash'); rethrow(ME); end; "
         "warning(original_cap_state.state,'statgen:allele_hash');")
