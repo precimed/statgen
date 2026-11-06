@@ -139,8 +139,8 @@ def _close_matlab_engine_at_end():
         _MATLAB_ENGINE = None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _prepare_r_extdata_fixtures():
+@pytest.fixture(scope="session")
+def prepare_r_extdata_fixtures():
     needs_prepare = False
     for r_name, canonical_rel in R_EXTDATA_COPIES.items():
         r_fixture = R_PACKAGE_DIR / f"inst/extdata/{r_name}"
