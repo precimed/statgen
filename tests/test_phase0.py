@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from tests.conftest import FIXTURES_DIR, matlab_data_lines, skipif_no_octave, run_octave
+from tests.conftest import FIXTURES_DIR, matlab_data_lines, matlab_output_text, skipif_no_octave, run_octave
 
 
 def _python_project_version() -> str:
@@ -185,3 +185,25 @@ def test_octave_version_smoke():
     result = run_octave("v = statgen.version(); disp(v);")
     assert result.returncode == 0, f"Octave stderr:\n{result.stderr}"
     assert statgen.__version__ in result.stdout
+
+
+@pytest.mark.parametrize("output", [
+    "warning: /tmp/source.tsv: no matching source rows for reference shard '1'\n",
+    "[\bWarning:\n/tmp/source.tsv:\nno matching source rows for reference shard '1']\b \n",
+])
+def test_matlab_output_text_preserves_wrapped_warning_message(output):
+    assert "/tmp/source.tsv: no matching source rows for reference shard '1'" in matlab_output_text(output)
+
+
+@pytest.mark.octave
+@skipif_no_octave
+@pytest.mark.parametrize("fails", [False, True])
+def test_runtime_snippets_reset_verbosity(fails):
+    script = "statgen.set_verbosity('quiet');"
+    if fails:
+        script += " error('statgen:test', 'simulated failure');"
+    first = run_octave(script)
+    assert (first.returncode != 0) == fails
+    second = run_octave("fprintf('%s\\n', statgen.get_verbosity());")
+    assert second.returncode == 0, second.stderr
+    assert matlab_data_lines(second.stdout) == ["info"]

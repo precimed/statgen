@@ -163,6 +163,7 @@ def prepare_r_extdata_fixtures():
 
 def run_octave(expr: str, timeout: int = 30) -> subprocess.CompletedProcess:
     """Run an expression via Octave or MATLAB (controlled by STATGEN_MATLAB=1)."""
+    expr = "statgen.set_verbosity('info'); " + expr
     if _USE_MATLAB:
         eng = _get_matlab_engine()
         if eng is None:
@@ -203,6 +204,11 @@ def run_rscript(expr: str, timeout: int = 30, env=None) -> subprocess.CompletedP
     """Run an expression via Rscript."""
     cmd = ["Rscript", "-e", expr]
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def matlab_output_text(output: str) -> str:
+    """Normalize MATLAB console controls and line wrapping for text assertions."""
+    return " ".join(output.replace("\b", "").split())
 
 
 def matlab_data_lines(stdout: str) -> list[str]:

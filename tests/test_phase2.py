@@ -10,7 +10,7 @@ import pytest
 from statgen._utils import allele_hash64
 from statgen.reference import load_reference
 from statgen.sumstats import create_sumstats, load_sumstats, save_sumstats_cache, load_sumstats_cache
-from tests.conftest import FIXTURES_DIR, MATLAB_DIR, matlab_data_lines, run_octave, skipif_no_octave
+from tests.conftest import FIXTURES_DIR, MATLAB_DIR, matlab_data_lines, matlab_output_text, run_octave, skipif_no_octave
 
 SHARDED_REF = FIXTURES_DIR / "reference/sharded/@.bim"
 
@@ -770,7 +770,7 @@ def test_octave_sumstats_orients_swapped_alleles(tmp_path):
     )
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
-    combined = " ".join((result.stdout + result.stderr).replace("\b", "").split())
+    combined = matlab_output_text(result.stdout + result.stderr)
     assert "shard 1: 1 successful allele swap(s)" in combined
     assert "remain unmatched" not in combined
     assert matlab_data_lines(result.stdout)[-1] == "1 1 0 0 0"
