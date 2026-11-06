@@ -109,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git make qpdf tidy ghostscript unzip
+          apt-get install -y --no-install-recommends ca-certificates curl git lsb-release make qpdf tidy ghostscript unzip
 
       - name: Check out repository
         uses: actions/checkout@v4
