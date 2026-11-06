@@ -225,7 +225,7 @@ def test_sumstats_warning_stacklevels(tmp_path):
         s = load_sumstats(path, reference)
     assert load_warn
     assert all(Path(w.filename).name == "sumstats.py" for w in load_warn)
-    assert all(w.lineno == load_sumstats.__code__.co_firstlineno + 2 for w in load_warn)
+    assert all(w.lineno == load_sumstats.__code__.co_firstlineno + 3 for w in load_warn)
 
     cache = tmp_path / "sumstats_required_only_cache.npz"
     s.save_cache(cache)

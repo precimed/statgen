@@ -11,7 +11,7 @@ function [loc, is_allele_swapped, n_strand_ambiguous, n_disabled_indels] = match
     is_allele_swapped = false(numel(ref_bp), 1);
     unused = true(numel(src_bp), 1);
     unused(loc(loc > 0)) = false;
-    [snv, strand_ambiguous, indel] = statgen.internal.reference_hash_masks(src_a1_hash64, src_a2_hash64);
+    [snv, strand_ambiguous, indel] = statgen.internal.variant_hash_masks(src_a1_hash64, src_a2_hash64);
     eligible = snv | (indel & allow_indel_swaps);
     source_rows = find(unused & (snv | indel));
     missing = find(loc == 0);

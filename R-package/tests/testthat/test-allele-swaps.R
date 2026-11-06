@@ -1,5 +1,6 @@
 test_that("allele swaps agree with the portable independent expectations", {
-  root <- system.file("extdata", "allele_swaps", package = "statgen", mustWork = TRUE)
+  root <- system.file("extdata", "allele_swaps", package = "statgen")
+  skip_if(!nzchar(root), "Swap fixtures are unavailable; run make prepare-r-fixtures in the repository")
   oracle <- jsonlite::fromJSON(file.path(root, "expected.json"), simplifyMatrix = TRUE)
   ref <- load_reference(file.path(root, "reference.bim"))
   previous <- get_verbosity()

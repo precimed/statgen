@@ -76,7 +76,7 @@ def match_shard_numeric(
     source_name: str = "source",
     allow_indel_swaps: bool = False,
 ) -> VariantMatch:
-    # Reference validation belongs to load_reference, including for cached panels.
+    # Reference validation belongs to load_reference; cached references are trusted.
     rows, _ = _lookup_candidates(
         ref_keys, src_keys, np.arange(src_keys.size), shard_label, source_name
     )
@@ -90,16 +90,16 @@ def match_shard_numeric(
     eligible = snv | (indel & allow_indel_swaps)
     source_rows = np.flatnonzero(unused & (snv | indel))
     reversed_keys = numeric_variant_keys(
-        src_keys["bp"], src_keys["a2_hash64"], src_keys["a1_hash64"]
+        src_keys["bp"][source_rows], a2h[source_rows], a1h[source_rows]
     )
     missing = np.flatnonzero(rows < 0)
     fallback, disabled = _lookup_candidates(
-        ref_keys[missing], reversed_keys[source_rows], source_rows, shard_label, source_name,
+        ref_keys[missing], reversed_keys, source_rows, shard_label, source_name,
         candidate_eligible=eligible[source_rows],
     )
     accepted = missing[fallback >= 0]
     rows[accepted] = fallback[fallback >= 0]
     swapped[accepted] = True
     selected = rows[swapped]
-    ambiguous = _is_strand_ambiguous(a1h, a2h)[selected]
+    ambiguous = _is_strand_ambiguous(a1h[selected], a2h[selected])
     return VariantMatch(rows, swapped, int(np.count_nonzero(ambiguous)), disabled)
