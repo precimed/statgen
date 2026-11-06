@@ -124,9 +124,7 @@ def _is_single_base(h) -> np.ndarray:
 
 
 def _is_single_nucleotide_variant(a1_hash64, a2_hash64) -> np.ndarray:
-    return np.isin(a1_hash64, _SINGLE_BASE_HASH64) & np.isin(
-        a2_hash64, _SINGLE_BASE_HASH64
-    )
+    return _is_single_base(a1_hash64) & _is_single_base(a2_hash64)
 
 
 def _is_strand_ambiguous(a1_hash64, a2_hash64) -> np.ndarray:
@@ -138,3 +136,9 @@ def _is_strand_ambiguous(a1_hash64, a2_hash64) -> np.ndarray:
         | ((a1 == _C_HASH64) & (a2 == _G_HASH64))
         | ((a1 == _G_HASH64) & (a2 == _C_HASH64))
     )
+
+
+def _validate_allow_indel_swaps(value) -> bool:
+    if not isinstance(value, (bool, np.bool_)):
+        raise ValueError("allow_indel_swaps must be a boolean scalar")
+    return bool(value)

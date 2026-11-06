@@ -16,7 +16,6 @@ from ._utils import (
     allele_hash64,
     validate_requested_shards,
 )
-from ._variant_match import check_unique_sorted_variant_keys, numeric_variant_keys
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +23,18 @@ _CACHE_SCHEMA = "reference_cache/0.1"
 
 
 def _validate_reference_keys(shard) -> None:
-    keys = numeric_variant_keys(shard.bp, shard.a1_hash64, shard.a2_hash64)
-    check_unique_sorted_variant_keys(np.sort(keys), f"reference shard {shard.label}", "reference")
+    # Ordered-key duplicates have already been rejected by the BIM parser.
     snv = shard.is_single_nucleotide_variant
-    reversed_keys = numeric_variant_keys(
-        shard.bp[snv], shard.a2_hash64[snv], shard.a1_hash64[snv]
-    )
-    reciprocal = np.isin(reversed_keys, keys)
-    if np.any(reciprocal):
-        bp = int(reversed_keys["bp"][np.flatnonzero(reciprocal)[0]])
-        raise ValueError(f"reference shard {shard.label}: reciprocal SNV keys are not allowed at bp={bp}")
+    bp = shard.bp[snv]
+    a1 = shard.a1_hash64[snv]
+    a2 = shard.a2_hash64[snv]
+    lo, hi = np.minimum(a1, a2), np.maximum(a1, a2)
+    order = np.lexsort((hi, lo, bp))
+    left, right = order[:-1], order[1:]
+    duplicate = (bp[left] == bp[right]) & (lo[left] == lo[right]) & (hi[left] == hi[right])
+    if np.any(duplicate):
+        pos = right[np.flatnonzero(duplicate)[0]]
+        raise ValueError(f"reference shard {shard.label}: reciprocal SNV keys are not allowed at bp={int(bp[pos])}")
 
 
 def _checksum_from_arrays(

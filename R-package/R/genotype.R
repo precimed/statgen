@@ -295,8 +295,8 @@ print.GenotypePanel <- function(x, ...) {
 
 .new_genotype_shard <- function(label, bed_path, bed_file_size, source_num_snp,
                                 source_num_sample, source_row0, subject_present,
-                                source_subject_row0, is_present, ploidy_male,
-                                ploidy_female, reference_checksum, is_allele_swapped) {
+                                source_subject_row0, is_present, is_allele_swapped,
+                                ploidy_male, ploidy_female, reference_checksum) {
   label <- as.character(label)
   source_num_snp <- as.integer(source_num_snp)
   source_num_sample <- as.integer(source_num_sample)

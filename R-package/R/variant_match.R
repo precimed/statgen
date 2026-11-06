@@ -1,10 +1,4 @@
-# Multi-key base::order() compares integer64 values by their underlying bits
-# as doubles, so hashes at or above 0x7FF0000000000000 read as NaN and tie, leaving
-# equal keys non-adjacent. Allele hashes are below 2^63, so each splits exactly
-# into high and low 32-bit parts that are safe as doubles.
-# Spec compliance: spec/reference.md forbids casting hashes to double because
-# values above 2^53 would lose precision. Each part here is below 2^32, so these
-# casts are exact and the sort keys preserve the full hash.
+# Sort exact 32-bit halves so multi-key order() never interprets integer64 hashes as doubles.
 .variant_key_order <- function(bp, a1_hash64, a2_hash64) {
   two32 <- bit64::as.integer64(4294967296)
   order(
@@ -57,10 +51,11 @@
   accepted <- missing[!is.na(fallback$rows)]
   rows[accepted] <- fallback$rows[!is.na(fallback$rows)]
   swapped[accepted] <- TRUE
+  selected <- rows[swapped]
   list(
     source_rows = rows,
     is_allele_swapped = swapped,
-    num_strand_ambiguous = sum(.is_strand_ambiguous_hash(src_a1_hash64, src_a2_hash64)[rows[swapped]]),
+    num_strand_ambiguous = sum(.is_strand_ambiguous_hash(src_a1_hash64[selected], src_a2_hash64[selected])),
     num_disabled_indels = fallback$excluded_hits
   )
 }

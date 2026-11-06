@@ -15,7 +15,7 @@ from ._bfile_utils import (
     _read_bed_rows_int8,
     _validate_bed,
 )
-from ._utils import allele_hash64, validate_requested_shards
+from ._utils import _validate_allow_indel_swaps, allele_hash64, validate_requested_shards
 from ._verbosity import report_variant_swaps
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
@@ -152,10 +152,10 @@ class GenotypeShard:
         subject_present,
         source_subject_row0,
         is_present,
+        is_allele_swapped,
         ploidy_male,
         ploidy_female,
         reference_checksum,
-        is_allele_swapped,
     ):
         self._label = str(label)
         self._bed_path = Path(bed_path)
@@ -354,6 +354,8 @@ class GenotypePanel:
 
     @property
     def is_allele_swapped(self) -> np.ndarray:
+        if not self._shards:
+            return np.array([], dtype=bool)
         return np.concatenate([s.is_allele_swapped for s in self._shards])
 
     @property
@@ -649,6 +651,7 @@ def _validate_reference_for_genotype(reference) -> list:
 
 
 def load_genotype(bfile_prefix, reference, allow_indel_swaps=False) -> GenotypePanel:
+    allow_indel_swaps = _validate_allow_indel_swaps(allow_indel_swaps)
     ref_shards = _validate_reference_for_genotype(reference)
     prefix = str(bfile_prefix)
     ref_labels = [s.label for s in ref_shards]

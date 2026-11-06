@@ -401,18 +401,24 @@ print.ReferencePanel <- function(x, ...) {
 }
 
 .validate_reference_keys <- function(shard) {
-  .check_unique_variant_keys(bp(shard), a1_hash64(shard), a2_hash64(shard),
-                             sprintf("reference shard %s", shard$label), "reference")
+  # Ordered-key duplicates have already been rejected by the BIM parser.
   snv <- is_single_nucleotide_variant(shard)
   positions <- bp(shard)[snv]
   a <- a1_hash64(shard)[snv]
   b <- a2_hash64(shard)[snv]
-  reciprocal <- .lookup_variant_candidates(positions, a, b, positions, b, a,
-                                          seq_along(positions), rep.int(TRUE, length(positions)),
-                                          shard$label, "reference")$rows
-  if (any(!is.na(reciprocal))) {
+  lo <- a
+  hi <- b
+  reverse <- a > b
+  lo[reverse] <- b[reverse]
+  hi[reverse] <- a[reverse]
+  ord <- .variant_key_order(positions, lo, hi)
+  left <- ord[-length(ord)]
+  right <- ord[-1L]
+  duplicate <- positions[left] == positions[right] & lo[left] == lo[right] & hi[left] == hi[right]
+  if (any(duplicate)) {
+    pos <- right[which(duplicate)[[1]]]
     stop(sprintf("reference shard %s: reciprocal SNV keys are not allowed at bp=%d",
-                 shard$label, positions[which(!is.na(reciprocal))[[1]]]), call. = FALSE)
+                 shard$label, positions[pos]), call. = FALSE)
   }
   invisible(NULL)
 }

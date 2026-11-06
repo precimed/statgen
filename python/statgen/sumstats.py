@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from pandas.errors import EmptyDataError, ParserError
 
-from ._utils import CANONICAL_CHR_ORDER, allele_hash64, validate_requested_shards
+from ._utils import CANONICAL_CHR_ORDER, _validate_allow_indel_swaps, allele_hash64, validate_requested_shards
 from ._verbosity import report_variant_swaps
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
@@ -458,6 +458,7 @@ def _build_sumstats_panel(df: pd.DataFrame, reference, source_path, allow_indel_
 
 
 def load_sumstats(path, reference, allow_indel_swaps=False) -> Sumstats:
+    allow_indel_swaps = _validate_allow_indel_swaps(allow_indel_swaps)
     path = Path(path)
     return _build_sumstats_panel(_parse_sumstats(path), reference, path, allow_indel_swaps)
 

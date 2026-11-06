@@ -111,11 +111,11 @@ classdef ReferenceShard
         end
 
         function out = get.is_single_nucleotide_variant(obj)
-            [out, ~] = statgen.internal.reference_hash_masks(obj.a1_hash64, obj.a2_hash64);
+            [out, ~] = statgen.internal.variant_hash_masks(obj.a1_hash64, obj.a2_hash64);
         end
 
         function out = get.is_strand_ambiguous(obj)
-            [~, out] = statgen.internal.reference_hash_masks(obj.a1_hash64, obj.a2_hash64);
+            [~, out] = statgen.internal.variant_hash_masks(obj.a1_hash64, obj.a2_hash64);
         end
 
         function [snp_text, a1_text, a2_text] = cache_text_payloads(obj)

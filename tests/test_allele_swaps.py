@@ -329,3 +329,25 @@ def test_swap_state_is_independent_of_missing_hardcalls(tmp_path):
     genotype = load_genotype(tmp_path / "source", reference)
     assert genotype.is_present[1] and genotype.is_allele_swapped[1]
     np.testing.assert_array_equal(genotype.fetch_genotypes_int8([1, 1]), np.full((4, 2), -1, np.int8))
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, 2, 0.0, "yes", [], np.array(True), np.array([True])])
+@pytest.mark.parametrize("loader,path", [
+    (load_sumstats, ROOT / "sumstats.tsv.gz"),
+    (load_genotype, ROOT / "genotype/@"),
+])
+def test_loaders_reject_non_boolean_indel_option(loader, path, value):
+    reference = load_reference(ROOT / "reference.bim")
+    with pytest.raises(ValueError, match="allow_indel_swaps must be a boolean scalar"):
+        loader(path, reference, allow_indel_swaps=value)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_loaders_accept_numpy_boolean_indel_option(enabled):
+    reference = load_reference(ROOT / "reference.bim")
+    expected = EXPECTED["options"][str(enabled).lower()]
+    genotype = load_genotype(ROOT / "genotype/@", reference, allow_indel_swaps=np.bool_(enabled))
+    np.testing.assert_array_equal(genotype.is_allele_swapped, expected["is_allele_swapped"])
+    with pytest.warns(RuntimeWarning):
+        stats = load_sumstats(ROOT / "sumstats.tsv.gz", reference, allow_indel_swaps=np.bool_(enabled))
+    np.testing.assert_allclose(stats.eaf_vec, _as_float(expected["aligned_sumstats"]["eaf"]), equal_nan=True)

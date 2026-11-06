@@ -1,5 +1,5 @@
-function [is_single_nucleotide_variant, is_strand_ambiguous, is_indel] = reference_hash_masks(a1_hash64, a2_hash64)
-%REFERENCE_HASH_MASKS Variant-type masks from reference allele hashes.
+function [is_single_nucleotide_variant, is_strand_ambiguous, is_indel] = variant_hash_masks(a1_hash64, a2_hash64)
+%VARIANT_HASH_MASKS Variant-type masks from allele hashes.
     a1 = uint64(a1_hash64(:));
     a2 = uint64(a2_hash64(:));
 
