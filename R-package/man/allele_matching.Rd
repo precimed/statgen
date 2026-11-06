@@ -34,7 +34,9 @@ alleles.
 chromosome, position, and alleles; marker IDs do not affect matching. They
 prefer a row whose allele order already matches the reference panel, even
 when its optional statistics or calls are missing. Otherwise, they can use
-a row with reversed alleles. Each row in your file is used at most once.
+a row with reversed alleles. Sumstats rows with missing \code{p} are validated
+and dropped before matching, so a valid swapped row can match when an exact
+row has missing \code{p}. Each remaining row is used at most once.
 
 Single nucleotide variants (SNVs) are swapped automatically, including A/T
 and C/G pairs, assuming your files already use the same strand. Swapping

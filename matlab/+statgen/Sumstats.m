@@ -7,8 +7,9 @@ classdef Sumstats
 %
 % A Sumstats object stores GWAS summary statistics aligned to a ReferencePanel.
 % SNP-axis properties are returned as num_snp-by-1 vectors in panel order.
-% Source variants absent from the reference-aligned data have NaN in logpvec
-% and is_present false. A source p-value of 0 is represented as Inf in logpvec.
+% Variants without valid p after alignment have NaN in logpvec and present
+% optional vectors, with is_present false. A source p-value of 0 is represented
+% as Inf in logpvec.
 % Optional statistic vectors are [] when the source field was absent.
 % zvec and beta_vec are oriented to reference a1 (ALT); eaf_vec is its frequency.
 %
@@ -19,7 +20,7 @@ classdef Sumstats
 %   nvec        Optional sample-size vector.
 %   beta_vec, se_vec, eaf_vec, info_vec
 %               Further optional statistic vectors.
-%   is_present  Logical vector marking matched summary-statistic rows.
+%   is_present  Logical vector marking variants with non-missing p.
 %
 % Common methods:
 %   select_shards Restrict the object to selected shards.

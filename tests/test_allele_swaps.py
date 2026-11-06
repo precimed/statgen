@@ -231,7 +231,7 @@ def test_sumstats_unmatched_duplicates_and_absent_optional_fields(tmp_path, caps
     assert stats.is_present[1] and np.isinf(stats.logpvec[1])
     assert capsys.readouterr().err == ""
     # Source validation is not bypassed for unmatched duplicate rows.
-    path.write_text(path.read_text().replace("9999\tA\tC\t0.1", "9999\tA\tC\tNaN"))
+    path.write_text(path.read_text().replace("9999\tA\tC\t0.1", "9999\tA\tC\t1.1"))
     with pytest.raises(ValueError, match="p must be finite"):
         load_sumstats(path, reference)
 

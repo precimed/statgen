@@ -19,6 +19,99 @@
   writeBin(charToRaw(text), path)
 }
 
+test_that("missing p keeps optional-column presence when all source rows drop", {
+  ref <- load_reference(.phase2_reference_template(), shards = "1")
+  path <- tempfile(fileext = ".tsv")
+  writeLines(c(
+    "chr\tbp\ta1\ta2\tp\tz\tn\tbeta\tse\teaf\tinfo",
+    "1\t100\tA\tG\tNA\t1\t100\t0.1\t0.2\t0.3\t0.9"
+  ), path)
+  captured <- .phase2_capture_warnings(load_sumstats(path, ref))
+  s <- captured$value
+  expect_true(any(grepl("no matching source rows", captured$warnings)))
+  expect_false(any(grepl("is absent", captured$warnings)))
+  expect_false(any(is_present(s)))
+  for (accessor in list(logpvec, zvec, nvec, beta_vec, se_vec, eaf_vec, info_vec)) {
+    expect_length(accessor(s), num_snp(ref))
+    expect_true(all(is.nan(accessor(s))))
+  }
+  cache <- tempfile(fileext = ".rds")
+  save_sumstats_cache(s, cache)
+  loaded <- load_sumstats_cache(cache)
+  for (accessor in list(logpvec, zvec, nvec, beta_vec, se_vec, eaf_vec, info_vec)) {
+    expect_identical(accessor(loaded), accessor(s))
+  }
+
+  writeLines(c("chr\tbp\ta1\ta2\tp", "1\t100\tA\tG\tNaN"), path)
+  s <- suppressWarnings(load_sumstats(path, ref))
+  for (accessor in list(zvec, nvec, beta_vec, se_vec, eaf_vec, info_vec)) {
+    expect_null(accessor(s))
+  }
+})
+
+test_that("factory NA and NaN p mask optional values without changing inputs", {
+  ref <- load_reference(.phase2_reference_template(), shards = "1")
+  p <- c(NA_real_, NaN, 0, 1, 0.1)
+  values <- as.numeric(seq_len(num_snp(ref)))
+  s <- create_sumstats(ref, p, values, values, values, values, values, values)
+  expect_identical(is_present(s), c(FALSE, FALSE, TRUE, TRUE, TRUE))
+  expect_true(all(is.nan(logpvec(s)[1:2])))
+  for (accessor in list(zvec, nvec, beta_vec, se_vec, eaf_vec, info_vec)) {
+    expect_identical(accessor(s), c(NaN, NaN, 3, 4, 5))
+  }
+  expect_identical(values, as.numeric(1:5))
+  expect_identical(p, c(NA_real_, NaN, 0, 1, 0.1))
+  cache <- tempfile(fileext = ".rds")
+  save_sumstats_cache(s, cache)
+  loaded <- load_sumstats_cache(cache)
+  for (accessor in list(logpvec, zvec, nvec, beta_vec, se_vec, eaf_vec, info_vec)) {
+    expect_identical(accessor(loaded), accessor(s))
+  }
+  expect_null(zvec(create_sumstats(ref, p)))
+  expect_error(create_sumstats(ref, c("bad", rep("0.1", 4))), "must be numeric")
+  for (value in c(Inf, -Inf)) {
+    expect_error(create_sumstats(ref, c(value, rep(0.1, 4))), "finite numeric")
+  }
+})
+
+test_that("numeric errors report the original row and value without fread warnings", {
+  ref <- load_reference(.phase2_reference_template(), shards = "1")
+  columns <- c("chr", "bp", "a1", "a2", "p", "z", "n", "beta", "se", "eaf", "info")
+  for (field in c("bp", "p", "z", "n", "beta", "se", "eaf", "info")) {
+    path <- tempfile(fileext = ".tsv")
+    row <- c("1", "100", "A", "G", "NA", "1", "2", "3", "4", "0.5", "6")
+    row[match(field, columns)] <- "abc"
+    writeLines(c(
+      paste(columns, collapse = "\t"),
+      "Y\t100\tA\tG\tNA\t1\t2\t3\t4\t0.5\t6",
+      paste(row, collapse = "\t"),
+      paste(replace(row, row == "abc", "def"), collapse = "\t")
+    ), path)
+    expect_no_warning(msg <- tryCatch(load_sumstats(path, ref), error = conditionMessage))
+    expect_match(msg, "row 3:", fixed = TRUE)
+    expect_match(msg, sQuote("abc"), fixed = TRUE)
+    expect_false(grepl("def", msg, fixed = TRUE))
+    if (field == "bp") {
+      expect_match(msg, "bp is not an integer:", fixed = TRUE)
+      expect_false(grepl("or missing", msg, fixed = TRUE))
+    }
+  }
+})
+
+test_that("load_sumstats rejects files where fread stops at an extra field", {
+  ref <- load_reference(.phase2_reference_template(), shards = "1")
+  path <- tempfile(fileext = ".tsv")
+  writeLines(c(
+    "chr\tbp\ta1\ta2\tp",
+    "1\t100\tA\tG\t0.1",
+    "1\t200\tC\tT\t0.2\textra",
+    "1\t300\tA\tC\t0.3"
+  ), path)
+  for (attempt in seq_len(2L)) {
+    expect_no_warning(expect_error(load_sumstats(path, ref), "malformed TSV"))
+  }
+})
+
 test_that("load_sumstats aligns TSV rows and cache round-trips", {
   sum_path <- system.file("extdata", "traits.tsv.gz", package = "statgen", mustWork = TRUE)
   ref <- load_reference(.phase2_reference_template())

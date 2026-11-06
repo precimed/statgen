@@ -32,9 +32,9 @@ Allele roles follow [SPEC.md](SPEC.md). An explicit genomic `REF` column is
 not currently supported for allele interpretation or matching; source orientation is
 determined by the effect and other allele columns.
 
-`p` is required and must be present for every source row. `p == 0` is allowed;
-`p < 0`, `p > 1`, non-numeric, `NaN`, infinite, and missing `p` values are
-validation errors.
+The `p` column is required, but individual values may be missing. Non-missing
+values must be finite and in `[0, 1]`; `p == 0` is allowed, and out-of-range
+values are validation errors.
 
 Optional columns:
 
@@ -69,10 +69,11 @@ Logical column types:
 | `info` | no | float |
 
 `bp` is parsed as a numeric value and then validated to be integral. It is not
-parsed as a string on performance-sensitive paths. Missing optional numeric
-values are represented as `NaN` after parsing. The token `NA` is accepted as an
-input missing-value spelling for numeric columns; for required numeric columns
-it still fails the downstream required-field validation.
+parsed as a string on performance-sensitive paths. Empty fields, `NA`, and
+`NaN` are missing values in every numeric column and are represented as `NaN`
+after parsing. Implementations may accept additional missing-value spellings
+and may read infinities as missing; any other non-numeric value is a
+validation error. Missing `bp` is invalid.
 
 Implementations must parse numeric logical columns with native numeric TSV
 reader support where the runtime provides it. MATLAB/Octave readers therefore
@@ -87,6 +88,8 @@ The TSV does not have to contain every variant in the reference panel.
 `load_sumstats` is a reference-driven projection from a possibly larger source.
 Loading against a `ReferencePanel` projects rows into reference order under
 [the shared matching contract](reference.md#source-to-reference-matching).
+Source rows with missing `p` are validated like other rows, then dropped before
+matching; matching and the warning below use only the remaining rows.
 Validated source rows on canonical contigs outside the supplied reference
 shard set are ignored for alignment, such as `X` rows loaded against a
 chr1-only reference. Recognized non-supported contigs, invalid contig labels,
@@ -209,9 +212,13 @@ Sumstats.eaf_vec  -> num_snp float vector, or missing optional field sentinel
 Sumstats.info_vec -> num_snp float vector, or missing optional field sentinel
 ```
 
-SNPs absent from the source file have `NaN` in `logpvec` and any present
-optional vectors. Missing optional fields use the language-specific sentinel
-defined in [SPEC.md](SPEC.md).
+SNPs without a matched source row have `NaN` in `logpvec` and any present
+optional vectors, with `is_present == false`. Where `p` passed to
+`create_sumstats` is missing (`NaN`, or `NA` in R), `logpvec` and present
+optional vectors are `NaN`.
+Missing optional statistics alone do not make a variant with valid `p` absent.
+Missing optional fields use the language-specific sentinel defined in
+[SPEC.md](SPEC.md).
 
 ## API
 
@@ -246,10 +253,10 @@ Expected behavior:
 - sumstats-to-reference matching follows the shared source-to-reference
   matching contract in [reference.md](reference.md#source-to-reference-matching).
   The loader does not normalize chromosome labels or perform strand handling.
-- required numeric field `p` must parse as a finite numeric value in the closed
-  interval `[0, 1]` for every source row; non-numeric, `NaN`, infinite, missing,
-  negative, or greater-than-one values are validation errors and must fail load
-  with a clear message.
+- `p` follows the validation and missing-value rules above. Invalid values
+  must fail load with a clear message. At `info` verbosity, `load_sumstats`
+  reports the number of rows dropped for missing `p` when nonzero; `quiet`
+  suppresses this report.
 - optional numeric fields `z` and `n` may be absent. `load_sumstats` warns when
   either column is absent. When present, each returns a full aligned vector with
   `NaN` for unmatched rows and missing source values, and `load_sumstats` warns
@@ -267,9 +274,8 @@ Expected behavior:
   reference panel.
 - `logpvec` is derived from the required `p` column as `-log10(p)`. By
   convention, `p == 0` yields `Inf`.
-- `is_present` is a derived accessor defined as `~isnan(logpvec)`. It is `true`
-  for matched source rows with valid `p`, including `p == 0`, and `false` for
-  reference variants absent from the source after alignment.
+- `is_present` is a derived accessor defined as `~isnan(logpvec)`, including
+  `true` for `p == 0`.
 - for each optional field (`zvec`, `nvec`, `beta_vec`, `se_vec`, `eaf_vec`,
   `info_vec`):
   when the source column is present, the accessor returns a full aligned vector
@@ -278,9 +284,9 @@ Expected behavior:
   from [SPEC.md](SPEC.md) (`None` in Python, `[]` in MATLAB/Octave, `NULL` in
   R).
 - `create_sumstats(...)` validates vector lengths against `reference.num_snp`.
-  Unknown shapes fail clearly; required `p` values must satisfy the same
-  finite numeric range contract as loaded objects, with `p == 0` allowed.
-  Optional vectors follow the same absent/present sentinel semantics.
+  Unknown shapes fail clearly. `p` accepts `NaN` (and `NA` in R) as missing;
+  other values must be finite and in `[0, 1]`. Optional vectors follow the same
+  absent/present sentinel semantics.
 - cache save/load must preserve the same optional-field semantics (field absent
   remains absent; field present remains a vector).
 - `Sumstats.save_cache(...)` is a thin convenience method equivalent to

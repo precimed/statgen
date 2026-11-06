@@ -22,6 +22,8 @@ EAF gives its frequency, and `a2` (or `OtherAllele`) is the other allele.
 Loaded effects, EAF, and genotype counts describe the reference panel's `a1`
 (ALT) allele. `create_sumstats` expects vectors already in the reference panel's
 order and allele orientation; it performs no matching or swaps.
+Missing `p` values in these vectors mark absent variants: `logpvec` and all
+present optional vectors are `NaN` at those positions.
 
 ## Matching variants
 
@@ -29,7 +31,9 @@ order and allele orientation; it performs no matching or swaps.
 and alleles; marker IDs do not affect matching. They prefer a row whose allele
 order already matches the reference panel, even when its optional statistics
 or calls are missing. Otherwise, they can use a row with reversed alleles.
-Each row in your file is used at most once:
+Sumstats rows with missing `p` are validated and dropped before matching, so
+a valid swapped row can match when an exact row has missing `p`.
+Each remaining row in your file is used at most once:
 
 - SNV swaps are automatic, including A/T and C/G under the same-strand assumption.
 - `allow_indel_swaps` defaults to false. Enabling it permits swaps with exactly

@@ -19,6 +19,8 @@ function sumstats = load_sumstats(path, reference, varargin)
 % accepted aliases for bp, a1, and a2. SNP may be present but is not used for
 % matching.
 %
+% Rows with missing p (empty, NA, or NaN) are validated, then dropped before
+% matching. At info verbosity the loader reports the number dropped.
 % Rows are projected into reference order. Variants absent from the source have
 % NaN logp values and is_present false. p == 0 is allowed and becomes Inf in
 % logpvec. Optional columns absent from the source return [] in MATLAB.
@@ -87,13 +89,13 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
         error('statgen:sumstats', '%s: row %d: a2 must be uppercase DNA bases (A/C/G/T): %s', path, source_line(i), a2_col{i});
     end
 
-    bad_bp = isnan(bp_num) | (bp_num ~= floor(bp_num));
+    bad_bp = ~isfinite(bp_num) | (bp_num ~= floor(bp_num));
     if any(bad_bp)
         i = find(bad_bp, 1, 'first');
         error('statgen:sumstats', '%s: row %d: bp is not an integer', path, source_line(i));
     end
 
-    bad_p = ~isfinite(p_num) | p_num < 0 | p_num > 1;
+    bad_p = ~isnan(p_num) & (~isfinite(p_num) | p_num < 0 | p_num > 1);
     if any(bad_p)
         i = find(bad_p, 1, 'first');
         error('statgen:sumstats', '%s: row %d: p must be finite numeric in [0, 1]', path, source_line(i));
@@ -124,16 +126,33 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
         end
     end
 
+    keep_p = ~isnan(p_num);
+    if any(~keep_p)
+        statgen.internal.verbosity_state('info', ...
+            sprintf('%s: dropped %d row(s) with missing p', path, sum(~keep_p)));
+    end
+    chr_col = chr_col(keep_p);
+    bp_num = bp_num(keep_p);
+    p_num = p_num(keep_p);
+    src_a1_hash64 = src_a1_hash64(keep_p);
+    src_a2_hash64 = src_a2_hash64(keep_p);
+    for i = 1:numel(optional_names)
+        nm = optional_names{i};
+        if any(strcmp(var_names, nm))
+            vals = optional_map.(nm);
+            optional_map.(nm) = vals(keep_p);
+        end
+    end
+
     p_aligned = nan(n_ref, 1);
 
     aligned_optional = struct('z', [], 'n', [], 'beta', [], 'se', [], 'eaf', [], 'info', []);
     for i = 1:numel(optional_names)
         nm = optional_names{i};
-        vals = optional_map.(nm);
-        if isempty(vals)
-            aligned_optional.(nm) = [];
-        else
+        if any(strcmp(var_names, nm))
             aligned_optional.(nm) = nan(n_ref, 1);
+        else
+            aligned_optional.(nm) = [];
         end
     end
 

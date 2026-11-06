@@ -141,8 +141,8 @@ Source order is not relevant. Match in two passes:
    match exactly but never through swap fallback.
 
 Each source row fills at most one reference slot. Exact matches win even when
-their statistics or calls are missing. Do not attempt swaps for source rows
-already assigned by exact matching. Swapped candidates for a reference slot
+their optional statistics or calls are missing. Do not attempt swaps for source
+rows already assigned by exact matching. Swapped candidates for a reference slot
 already filled by an exact match do not create ambiguity; retain the exact
 match. Source duplicates that cannot populate a reference slot need no check.
 Reciprocal source rows such as `A/G` and `G/A` are allowed; the exact row wins.

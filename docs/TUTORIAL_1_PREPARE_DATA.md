@@ -123,8 +123,13 @@ Prepare inputs so genome build, chromosome names, and DNA strand agree across
 files before using `statgen`.
 
 Summary-statistics files must contain `chr`, `bp`, `a1`, `a2`, and `p` columns.
-`z` and `n` are optional; when present, missing values among variants with `p`
-values will produce warnings.
+The `p` column is required, but empty fields, `NA`, and `NaN` are accepted as
+missing values. Rows with missing `p` are validated, then dropped before
+matching; their reference slots remain missing unless another valid row matches.
+At `info` verbosity the loader reports the number dropped. Non-missing `p`
+values must be finite and in `[0, 1]`; `p == 0` becomes `Inf` in `logpvec`.
+`z` and `n` are optional; when present, missing values among variants with valid
+`p` values will produce warnings.
 
 Annotation examples include binary 3-column BED files, a grouped BED-like file,
 and a headered BED-like continuous annotation file. `functional_groups.annot`
