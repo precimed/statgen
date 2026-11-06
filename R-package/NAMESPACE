@@ -1,3 +1,6 @@
+S3method(is_allele_swapped,GenotypePanel)
+S3method(is_allele_swapped,GenotypeShard)
+export(is_allele_swapped)
 S3method(a1,ReferencePanel)
 S3method(a1,ReferenceShard)
 S3method(a1_hash64,ReferencePanel)

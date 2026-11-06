@@ -397,3 +397,22 @@ def test_r_bed_helpers_use_double_arithmetic_beyond_32bit_offsets(tmp_path):
     assert result.returncode == 0, result.stderr
     lines = [line.strip() for line in result.stdout.strip().splitlines()]
     assert lines == ["2500000003", "500000 1", "2 2"]
+
+
+@pytest.mark.r
+@skipif_no_rscript
+def test_r_genotype_matches_hashes_in_double_nan_bit_range(tmp_path):
+    # Both a2 hashes are >= 0x7FF0000000000000; see test_r_phase2.py.
+    bim = "1\trs1\t0\t100\tT\tGTAGAA\n1\trs2\t0\t100\tT\tGTAGAC\n"
+    (tmp_path / "ref.bim").write_text(bim)
+    (tmp_path / "g.bim").write_text(bim)
+    (tmp_path / "g.fam").write_text("f1 s1 0 0 1 -9\nf2 s2 0 0 2 -9\n")
+    (tmp_path / "g.bed").write_bytes(bytes([0x6C, 0x1B, 0x01, 0x00, 0x00]))
+    result = run_rscript(
+        _source_phase3_script(
+            f"ref <- load_reference({json.dumps(str(tmp_path / 'ref.bim'))}); "
+            f"g <- load_genotype({json.dumps(str(tmp_path / 'g'))}, ref); "
+            "stopifnot(identical(is_present(g), c(TRUE, TRUE)))"
+        )
+    )
+    assert result.returncode == 0, result.stderr

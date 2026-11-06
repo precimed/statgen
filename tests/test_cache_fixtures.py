@@ -46,6 +46,7 @@ EXPECTED_CACHE_FIXTURES = [
     ("genotype", "matlab", "genotype_cache_0_1", "mat", "m"),
     ("genotype", "matlab", "genotype_cache_0_2", "mat", "m"),
     ("genotype", "r", "genotype_cache_0_1", "rds", "R"),
+    ("genotype", "r", "genotype_cache_0_2", "rds", "R"),
 ]
 
 
@@ -205,6 +206,7 @@ def _r_statements(expr: str) -> str:
             ref <- statgen_cache_fixture_reference(repo_root)
             g <- load_genotype({json.dumps(GENOTYPE)}, ref)
             g_cached <- load_genotype_cache({json.dumps(str(CACHE_DIR / 'genotype_r_genotype_cache_0_1.rds'))})
+            stopifnot(!any(is_allele_swapped(g_cached)))
             stopifnot(identical(is_present(g_cached), is_present(g)))
             stopifnot(isTRUE(all.equal(ploidy_male(g_cached), ploidy_male(g), check.attributes = FALSE)))
             stopifnot(isTRUE(all.equal(ploidy_female(g_cached), ploidy_female(g), check.attributes = FALSE)))

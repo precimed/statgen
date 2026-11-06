@@ -16,7 +16,7 @@
 Load, create, inspect, and cache reference-aligned GWAS summary statistics.
 }
 \usage{
-load_sumstats(path, reference)
+load_sumstats(path, reference, allow_indel_swaps = FALSE)
 create_sumstats(reference, p, z = NULL, n = NULL,
   beta = NULL, se = NULL, eaf = NULL, info = NULL)
 save_sumstats_cache(sumstats, path)
@@ -34,6 +34,8 @@ info_vec(x, ...)
 \arguments{
 \item{path}{Character scalar path to a summary-statistics TSV or RDS cache.}
 \item{reference}{A \code{ReferencePanel}.}
+\item{allow_indel_swaps}{Logical scalar enabling swaps for allele pairs with
+one single-base and one longer allele. SNV swaps are always enabled.}
 \item{sumstats, x}{A \code{Sumstats} object.}
 \item{p, z, n, beta, se, eaf, info}{Aligned
 numeric vectors. Optional vectors may be \code{NULL}.}
@@ -47,7 +49,9 @@ return ordinary R vectors, with \code{NULL} for absent optional fields.
 }
 \details{
 Rows are projected onto the supplied reference by exact chromosome, position,
-and allele-hash matching. Missing reference variants are represented by
+and allele-hash matching, with exact matches taking priority over swaps.
+Swaps negate Z and beta and complement EAF to reference \code{a1}.
+Missing reference variants are represented by
 \code{NaN} in \code{logpvec(x)} and by \code{is_present(x) == FALSE}.
 Gzipped TSV input requires the suggested \pkg{R.utils} package so
 \code{data.table::fread()} can read compressed files portably.

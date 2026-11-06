@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- R variant matching now sorts allele hashes at or above
+  `0x7FF0000000000000` correctly. Previously, two such alleles at one position
+  could lose exact matches, and duplicate keys could load silently.
+
 ## [0.3.4] - 2026-05-27
 
 ### Added

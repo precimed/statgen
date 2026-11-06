@@ -1,8 +1,3 @@
 #!/usr/bin/env Rscript
-# Generate tests/fixtures/cache/genotype_r_genotype_cache_0_1.rds.
-# Run from the repository root:
-#   Rscript tests/fixtures/cache/generate_genotype_r_genotype_cache_0_1.R
-
-statgen_cache_dir <- dirname(normalizePath(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[[1]])))
-source(file.path(statgen_cache_dir, "cache_fixture_helpers.R"))
-statgen_generate_r_cache_fixture("genotype")
+# Historical /0.1 generator; current writers emit /0.2.
+stop("Run this generator from revision 86e1656bb5bd4f0fdb4ced6b4c4a3b75146bb62e to reproduce historical /0.1 caches", call. = FALSE)

@@ -1,4 +1,4 @@
-.genotype_cache_schema <- "genotype_cache/0.1"
+.genotype_cache_schema <- "genotype_cache/0.2"
 .bed_missing_int <- -1L
 .haploid_modes <- c("raw", "ploidy_scaled")
 
@@ -18,7 +18,8 @@ is_subject_present <- function(x, shard, ...) UseMethod("is_subject_present")
 fetch_genotypes_int8 <- function(x, snp_indices, bed_path = NULL, ...) UseMethod("fetch_genotypes_int8")
 fetch_genotypes <- function(x, snp_indices, bed_path = NULL, haploid_mode = NULL, ...) UseMethod("fetch_genotypes")
 
-load_genotype <- function(bfile_prefix, reference) {
+load_genotype <- function(bfile_prefix, reference, allow_indel_swaps = FALSE) {
+  allow_indel_swaps <- .validate_allow_indel_swaps(allow_indel_swaps)
   prefix <- .validate_path_scalar(bfile_prefix, "bfile_prefix")
   if (!inherits(reference, "ReferencePanel")) {
     stop("reference must be a ReferencePanel", call. = FALSE)
@@ -86,7 +87,7 @@ load_genotype <- function(bfile_prefix, reference) {
   out <- vector("list", length(ref_shards))
   for (i in seq_along(ref_shards)) {
     label <- ref_shards[[i]]$label
-    out[[i]] <- .build_genotype_shard(ref_shards[[i]], sources[[label]], subject_maps[[label]])
+    out[[i]] <- .build_genotype_shard(ref_shards[[i]], sources[[label]], subject_maps[[label]], allow_indel_swaps)
   }
   .new_genotype_panel(
     out,
@@ -122,6 +123,7 @@ save_genotype_cache <- function(panel, path) {
   payload <- list(
     metadata = metadata,
     is_present = is_present(panel),
+    is_allele_swapped = is_allele_swapped(panel),
     ploidy_male = ploidy_male(panel),
     ploidy_female = ploidy_female(panel),
     source_row0 = source_row0(panel),
@@ -145,6 +147,7 @@ load_genotype_cache <- function(path, shards = NULL) {
   payload <- readRDS(path)
   .validate_genotype_cache_payload(payload)
   meta <- payload$metadata
+  swap_flags <- if (meta$schema == .genotype_cache_schema) payload$is_allele_swapped else rep.int(FALSE, length(payload$is_present))
   selected <- .validate_requested_shards(shards, meta$shard_labels, "load_genotype_cache")
   label_to_index <- stats::setNames(seq_along(meta$shard_labels), meta$shard_labels)
 
@@ -164,6 +167,7 @@ load_genotype_cache <- function(path, shards = NULL) {
       subject_present = payload$subject_present[, idx],
       source_subject_row0 = payload$source_subject_row0[, idx],
       is_present = payload$is_present[start:stop],
+      is_allele_swapped = swap_flags[start:stop],
       ploidy_male = payload$ploidy_male[start:stop],
       ploidy_female = payload$ploidy_female[start:stop],
       reference_checksum = meta$shard_checksums[[idx]]
@@ -192,6 +196,9 @@ mother_id.GenotypePanel <- function(x, ...) x$mother_id
 sex.GenotypePanel <- function(x, ...) x$sex
 is_male.GenotypePanel <- function(x, ...) x$sex == 1L
 is_female.GenotypePanel <- function(x, ...) x$sex == 2L
+is_allele_swapped <- function(x, ...) UseMethod("is_allele_swapped")
+is_allele_swapped.GenotypeShard <- function(x, ...) x$is_allele_swapped
+is_allele_swapped.GenotypePanel <- function(x, ...) unlist(lapply(x$shards, is_allele_swapped), use.names = FALSE)
 is_present.GenotypeShard <- function(x, ...) x$is_present
 is_present.GenotypePanel <- function(x, ...) unlist(lapply(x$shards, is_present), use.names = FALSE)
 ploidy_male.GenotypeShard <- function(x, ...) x$ploidy_male
@@ -244,6 +251,12 @@ fetch_genotypes_int8.GenotypePanel <- function(x, snp_indices, bed_path = NULL, 
     .validate_bed_file(effective_bed, shard$source_num_sample, shard$source_num_snp)
     source_rows <- shard$source_row0[entry$local_indices]
     source_geno <- .read_bed_rows_int8_codes(effective_bed, source_rows, shard$source_num_sample)
+    swapped_columns <- which(shard$is_allele_swapped[entry$local_indices])
+    if (length(swapped_columns)) {
+      calls <- source_geno[, swapped_columns, drop = FALSE]
+      flip_lut <- c(-1L, 2L, 1L, 0L)
+      source_geno[, swapped_columns] <- matrix(flip_lut[calls + 2L], nrow = nrow(calls), ncol = ncol(calls))
+    }
     panel_rows <- which(shard$subject_present)
     if (length(panel_rows)) {
       source_subject_rows <- shard$source_subject_row0[panel_rows] + 1L
@@ -283,7 +296,7 @@ print.GenotypePanel <- function(x, ...) {
 .new_genotype_shard <- function(label, bed_path, bed_file_size, source_num_snp,
                                 source_num_sample, source_row0, subject_present,
                                 source_subject_row0, is_present, ploidy_male,
-                                ploidy_female, reference_checksum) {
+                                ploidy_female, reference_checksum, is_allele_swapped) {
   label <- as.character(label)
   source_num_snp <- as.integer(source_num_snp)
   source_num_sample <- as.integer(source_num_sample)
@@ -301,7 +314,7 @@ print.GenotypePanel <- function(x, ...) {
   ploidy_male <- as.numeric(ploidy_male)
   ploidy_female <- as.numeric(ploidy_female)
   .validate_equal_lengths(
-    list(source_row0 = source_row0, is_present = is_present, ploidy_male = ploidy_male, ploidy_female = ploidy_female),
+    list(source_row0 = source_row0, is_present = is_present, is_allele_swapped = is_allele_swapped, ploidy_male = ploidy_male, ploidy_female = ploidy_female),
     sprintf("GenotypeShard %s: SNP-axis vector lengths must match", label)
   )
   if (!identical(is_present, source_row0 >= 0L)) {
@@ -310,6 +323,9 @@ print.GenotypePanel <- function(x, ...) {
   bad_source <- source_row0 < -1L | source_row0 >= source_num_snp
   if (any(bad_source)) {
     stop(sprintf("GenotypeShard %s: source_row0 out of source BIM bounds", label), call. = FALSE)
+  }
+  if (!is.logical(is_allele_swapped) || anyNA(is_allele_swapped) || any(is_allele_swapped & !is_present)) {
+    stop(sprintf("GenotypeShard %s: is_allele_swapped must be logical and requires is_present", label), call. = FALSE)
   }
   absent <- !is_present
   if (any(!is.nan(ploidy_male[absent])) || any(!is.nan(ploidy_female[absent]))) {
@@ -346,6 +362,7 @@ print.GenotypePanel <- function(x, ...) {
       subject_present = subject_present,
       source_subject_row0 = source_subject_row0,
       is_present = is_present,
+      is_allele_swapped = is_allele_swapped,
       ploidy_male = ploidy_male,
       ploidy_female = ploidy_female,
       reference_checksum = as.character(reference_checksum),
@@ -497,33 +514,21 @@ print.GenotypePanel <- function(x, ...) {
   list(subject_present = subject_present, source_subject_row0 = source_subject_row0)
 }
 
-.build_genotype_shard <- function(ref_shard, source, subject_map) {
+.build_genotype_shard <- function(ref_shard, source, subject_map, allow_indel_swaps) {
+  is_allele_swapped <- rep.int(FALSE, ref_shard$num_snp)
   source_bim <- source$bim[source$bim$chr == ref_shard$label, , drop = FALSE]
   if (!nrow(source_bim)) {
     local_match <- rep.int(NA_integer_, ref_shard$num_snp)
   } else {
-    local_match <- .match_variant_keys(
+    match <- .match_variant_keys(
       bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
       source_bim$bp, source_bim$a1_hash64, source_bim$a2_hash64,
-      ref_shard$label, "genotype"
+      ref_shard$label, "genotype", allow_indel_swaps
     )
-    has_match <- !is.na(local_match)
-    matched_source_mask <- rep.int(FALSE, nrow(source_bim))
-    matched_source_mask[local_match[has_match]] <- TRUE
-    unmatched <- source_bim[!matched_source_mask, , drop = FALSE]
-    swapped <- .count_variant_key_intersections(
-      bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
-      unmatched$bp, unmatched$a2_hash64, unmatched$a1_hash64
-    )
-    if (swapped > 0L) {
-      warning(
-        sprintf(
-          "%s: shard %s: %d unmatched genotype variant(s) would match the reference if a1/a2 were swapped; variants remain unmatched",
-          source$bim_path, ref_shard$label, swapped
-        ),
-        call. = FALSE
-      )
-    }
+    local_match <- match$source_rows
+    is_allele_swapped <- match$is_allele_swapped
+    .report_variant_swaps(source$bim_path, ref_shard$label, sum(is_allele_swapped),
+                          match$num_strand_ambiguous, match$num_disabled_indels)
   }
 
   is_present <- !is.na(local_match)
@@ -547,6 +552,7 @@ print.GenotypePanel <- function(x, ...) {
     subject_present = subject_map$subject_present,
     source_subject_row0 = subject_map$source_subject_row0,
     is_present = is_present,
+    is_allele_swapped = is_allele_swapped,
     ploidy_male = ploidy_male_vec,
     ploidy_female = ploidy_female_vec,
     reference_checksum = ref_shard$checksum
@@ -668,9 +674,13 @@ print.GenotypePanel <- function(x, ...) {
 }
 
 .validate_genotype_cache_payload <- function(payload) {
+  schema <- payload$metadata$schema
+  if (length(schema) != 1L || is.na(schema) || !(schema %in% c(.genotype_cache_schema, "genotype_cache/0.1"))) {
+    stop("Unsupported genotype cache schema", call. = FALSE)
+  }
   cache <- .validate_cache_payload_metadata(
     payload,
-    .genotype_cache_schema,
+    schema,
     "genotype",
     extra_fields = c("bed_paths", "bed_file_sizes", "source_num_snp", "source_num_sample")
   )
@@ -691,6 +701,15 @@ print.GenotypePanel <- function(x, ...) {
   }
   if (length(payload$ploidy_male) != total || length(payload$ploidy_female) != total) {
     stop("Invalid genotype cache: ploidy vector lengths mismatch", call. = FALSE)
+  }
+  if (schema == .genotype_cache_schema) {
+    flags <- payload$is_allele_swapped
+    if (!is.logical(flags) || !is.null(dim(flags)) || length(flags) != total || anyNA(flags)) {
+      stop("Invalid genotype cache: is_allele_swapped must be a logical SNP-axis vector", call. = FALSE)
+    }
+    if (any(flags & !payload$is_present)) {
+      stop("Invalid genotype cache: is_allele_swapped requires is_present", call. = FALSE)
+    }
   }
   num_sample_value <- as.integer(meta$num_sample)
   if (is.na(num_sample_value) || num_sample_value < 0L) {
