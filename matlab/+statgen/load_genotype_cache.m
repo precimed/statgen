@@ -33,6 +33,20 @@ function panel = load_genotype_cache(path, shards)
 
     [labels, checksums, start0, stop0, source_layout, bed_paths, bed_file_sizes, source_num_snp, source_num_sample, num_sample] = validate_metadata_(meta, num_snp);
 
+    if strcmp(meta.schema, 'genotype_cache/0.2')
+        require_fields_(loaded, {'is_allele_swapped'});
+        flags = loaded.is_allele_swapped;
+        if ~islogical(flags) || ~isvector(flags) || numel(flags) ~= num_snp
+            error('statgen:cache', 'Invalid genotype cache: is_allele_swapped must be a logical SNP-axis vector');
+        end
+        is_allele_swapped = flags(:);
+        if any(is_allele_swapped & ~is_present)
+            error('statgen:cache', 'Invalid genotype cache: is_allele_swapped requires is_present');
+        end
+    else
+        is_allele_swapped = false(num_snp, 1);
+    end
+
     fid = statgen.internal.ensure_cell_col(loaded.fid);
     iid = statgen.internal.ensure_cell_col(loaded.iid);
     father_id = statgen.internal.ensure_cell_col(loaded.father_id);
@@ -71,7 +85,7 @@ function panel = load_genotype_cache(path, shards)
             labels{idx}, bed_paths{idx}, bed_file_sizes(idx), ...
             source_num_snp(idx), source_num_sample(idx), ...
             source_row0(ix), subject_present(:, idx), source_subject_row0(:, idx), ...
-            is_present(ix), ploidy_male(ix), ploidy_female(ix), checksums{idx});
+            is_present(ix), is_allele_swapped(ix), ploidy_male(ix), ploidy_female(ix), checksums{idx});
     end
 
     panel = statgen.GenotypePanel(out_shards, fid, iid, father_id, mother_id, sex, source_layout);
@@ -86,7 +100,7 @@ function require_fields_(loaded, fields)
 end
 
 function [labels, checksums, start0, stop0, source_layout, bed_paths, bed_file_sizes, source_num_snp, source_num_sample, num_sample] = validate_metadata_(meta, num_snp)
-    if ~isfield(meta, 'schema') || ~strcmp(meta.schema, 'genotype_cache/0.1')
+    if ~isfield(meta, 'schema') || ~any(strcmp(meta.schema, {'genotype_cache/0.1', 'genotype_cache/0.2'}))
         if isfield(meta, 'schema')
             schema = meta.schema;
         else
@@ -104,7 +118,7 @@ function [labels, checksums, start0, stop0, source_layout, bed_paths, bed_file_s
     end
 
     [labels, checksums, start0, stop0, n_shards] = statgen.internal.validate_cache_shard_metadata( ...
-        meta, 'genotype_cache/0.1', 'genotype', num_snp, true);
+        meta, meta.schema, 'genotype', num_snp, true);
     bed_paths = statgen.internal.ensure_cell_col(meta.bed_paths);
     bed_file_sizes = double(meta.bed_file_sizes(:));
     source_num_snp = double(meta.source_num_snp(:));

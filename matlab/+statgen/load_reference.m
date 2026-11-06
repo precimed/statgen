@@ -52,6 +52,7 @@ function panel = load_sharded_(path, requested_shards)
         path_idx = find(strcmp(available_labels, label), 1, 'first');
         bim = reference_bim_rows_(statgen.internal.bfile_parse_bim(available_paths{path_idx}));
         shards{i} = statgen.ReferenceShard(label, bim.chr, bim.snp, bim.bp, bim.a1, bim.a2);
+        validate_reciprocal_snvs_(shards{i});
     end
     panel = statgen.ReferencePanel(shards);
 end
@@ -74,6 +75,7 @@ function panel = load_split_by_chr_(bim, requested_shards)
         shards{ci} = statgen.ReferenceShard(c, ...
             bim.chr(mask), bim.snp(mask), ...
             bim.bp(mask), bim.a1(mask), bim.a2(mask));
+        validate_reciprocal_snvs_(shards{ci});
     end
 
     panel = statgen.ReferencePanel(shards);
@@ -87,4 +89,20 @@ function out = reference_bim_rows_(bim)
     out.bp = bim.bp(keep);
     out.a1 = bim.a1(keep);
     out.a2 = bim.a2(keep);
+end
+
+function validate_reciprocal_snvs_(shard)
+    snv = shard.is_single_nucleotide_variant;
+    bp = shard.bp(snv);
+    a1 = shard.a1_hash64(snv);
+    a2 = shard.a2_hash64(snv);
+    lo = min(a1, a2);
+    hi = max(a1, a2);
+    order = statgen.internal.variant_key_order(bp, lo, hi);
+    duplicate = bp(order(2:end)) == bp(order(1:end-1)) & ...
+        lo(order(2:end)) == lo(order(1:end-1)) & hi(order(2:end)) == hi(order(1:end-1));
+    if any(duplicate)
+        pos = order(find(duplicate, 1, 'first'));
+        error('statgen:reference', 'reference shard %s: reciprocal SNV keys are not allowed at bp=%d', shard.label, bp(pos));
+    end
 end

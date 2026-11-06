@@ -163,7 +163,7 @@ def test_octave_genotype_missing_source_shard_fails(tmp_path):
 
 @pytest.mark.octave
 @skipif_no_octave
-def test_octave_genotype_warns_on_unmatched_swapped_alleles(tmp_path):
+def test_octave_genotype_orients_swapped_alleles(tmp_path):
     copy_genotype_shard_files(tmp_path, "1")
     rows = list(GENOTYPE_CHR1_BIM)
     rows[1] = ("1", "rs1002", 0, 200, "T", "C")
@@ -177,9 +177,9 @@ def test_octave_genotype_warns_on_unmatched_swapped_alleles(tmp_path):
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
     combined = " ".join((result.stdout + result.stderr).replace("\b", "").split())
-    assert "shard 1: 1 unmatched genotype variant" in combined
-    assert "a1/a2 were swapped" in combined
-    assert matlab_data_lines(result.stdout)[-1] == "1 0 1 1 1"
+    assert "shard 1: 1 successful allele swap(s)" in combined
+    assert "remain unmatched" not in combined
+    assert matlab_data_lines(result.stdout)[-1] == "1 1 1 1 1"
 
 
 @pytest.mark.octave

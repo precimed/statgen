@@ -12,12 +12,13 @@ classdef GenotypeShard
         subject_present
         source_subject_row0
         is_present
+        is_allele_swapped
         ploidy_male
         ploidy_female
         reference_checksum
     end
     methods
-        function obj = GenotypeShard(label, bed_path, bed_file_size, source_num_snp, source_num_sample, source_row0, subject_present, source_subject_row0, is_present, ploidy_male, ploidy_female, reference_checksum)
+        function obj = GenotypeShard(label, bed_path, bed_file_size, source_num_snp, source_num_sample, source_row0, subject_present, source_subject_row0, is_present, is_allele_swapped, ploidy_male, ploidy_female, reference_checksum)
             if nargin == 0, return; end
 
             obj.label = char(label);
@@ -38,10 +39,11 @@ classdef GenotypeShard
 
             obj.source_row0 = double(source_row0(:));
             obj.is_present = logical(is_present(:));
+            obj.is_allele_swapped = logical(is_allele_swapped(:));
             obj.ploidy_male = double(ploidy_male(:));
             obj.ploidy_female = double(ploidy_female(:));
             obj.num_snp = numel(obj.is_present);
-            if numel(obj.source_row0) ~= obj.num_snp || numel(obj.ploidy_male) ~= obj.num_snp || numel(obj.ploidy_female) ~= obj.num_snp
+            if numel(obj.is_allele_swapped) ~= obj.num_snp || numel(obj.source_row0) ~= obj.num_snp || numel(obj.ploidy_male) ~= obj.num_snp || numel(obj.ploidy_female) ~= obj.num_snp
                 error('statgen:genotype', 'GenotypeShard %s: SNP-axis vector lengths must match', obj.label);
             end
             if ~isequal(obj.is_present, obj.source_row0 >= 0)
@@ -50,6 +52,9 @@ classdef GenotypeShard
             bad_source = obj.source_row0 < -1 | obj.source_row0 >= obj.source_num_snp | obj.source_row0 ~= floor(obj.source_row0);
             if any(bad_source)
                 error('statgen:genotype', 'GenotypeShard %s: source_row0 out of source BIM bounds', obj.label);
+            end
+            if any(obj.is_allele_swapped & ~obj.is_present)
+                error('statgen:genotype', 'GenotypeShard %s: is_allele_swapped requires is_present', obj.label);
             end
             absent = ~obj.is_present;
             if any(~isnan(obj.ploidy_male(absent))) || any(~isnan(obj.ploidy_female(absent)))

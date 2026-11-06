@@ -13,7 +13,7 @@ function save_genotype_cache(panel, path, varargin)
         'save_genotype_cache', 'v7', {'v7', 'v7.3', 'v5'}, varargin{:});
 
     n_shards = numel(panel.shards);
-    metadata.schema = 'genotype_cache/0.1';
+    metadata.schema = 'genotype_cache/0.2';
     metadata.n_shards = n_shards;
     metadata.shard_labels = cell(n_shards, 1);
     metadata.shard_checksums = cell(n_shards, 1);
@@ -44,6 +44,7 @@ function save_genotype_cache(panel, path, varargin)
     end
 
     is_present = panel.is_present;
+    is_allele_swapped = panel.is_allele_swapped;
     ploidy_male = panel.ploidy_male;
     ploidy_female = panel.ploidy_female;
     source_row0 = panel.source_row0;
@@ -55,7 +56,7 @@ function save_genotype_cache(panel, path, varargin)
     is_male = panel.is_male;
     is_female = panel.is_female;
 
-    save(path, 'metadata', 'is_present', 'ploidy_male', 'ploidy_female', ...
+    save(path, 'metadata', 'is_present', 'is_allele_swapped', 'ploidy_male', 'ploidy_female', ...
         'source_row0', 'subject_present', 'source_subject_row0', ...
         'fid', 'iid', 'father_id', 'mother_id', 'sex', 'is_male', ...
         'is_female', save_arg);

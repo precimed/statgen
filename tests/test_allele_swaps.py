@@ -76,7 +76,7 @@ def test_shared_swap_oracle(enabled, tmp_path, capsys):
         for output in (stats_reporting, genotype_reporting):
             assert f"shard {shard.label}: {counts['swaps']} successful allele swap(s)" in output
             if counts["strand_ambiguous"]:
-                assert f"shard {shard.label}: {counts['strand_ambiguous']} strand-ambiguous" in output
+                assert f"shard {shard.label}: {counts['strand_ambiguous']} strand-ambiguous A/T or C/G swap(s)" in output
             if counts["disabled_indels"]:
                 assert f"shard {shard.label}: {counts['disabled_indels']} indel row(s)" in output
     assert "0 strand-ambiguous" not in stats_reporting
@@ -183,8 +183,9 @@ def test_legacy_cache_has_false_swaps_without_source_parsing(monkeypatch, tmp_pa
 def test_reference_rejects_reciprocal_snvs(alleles, tmp_path):
     a, b = alleles
     path = tmp_path / "reference.bim"
-    path.write_text(f"1\ta\t0\t100\t{a}\t{b}\n1\tb\t0\t100\t{b}\t{a}\n")
-    with pytest.raises(ValueError, match="reciprocal SNV"):
+    path.write_text("1\tlong\t0\t50\tAC\tGT\n1\tsnv\t0\t75\tA\tC\n"
+                    f"1\ta\t0\t100\t{a}\t{b}\n1\tb\t0\t100\t{b}\t{a}\n")
+    with pytest.raises(ValueError, match="reference shard 1: reciprocal SNV keys are not allowed at bp=100"):
         load_reference(path)
 
 

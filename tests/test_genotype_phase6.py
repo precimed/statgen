@@ -38,6 +38,7 @@ def test_octave_genotype_cache_top_level_variables_and_format_option(tmp_path):
         "father_id",
         "fid",
         "iid",
+        "is_allele_swapped",
         "is_female",
         "is_male",
         "is_present",
@@ -65,7 +66,7 @@ def test_octave_genotype_cache_top_level_variables_and_format_option(tmp_path):
     lines = matlab_data_lines(result.stdout)
     assert lines == [
         ",".join(expected_vars),
-        "genotype_cache/0.1 2 8 4 2",
+        "genotype_cache/0.2 2 8 4 2",
     ]
 
 
