@@ -8,7 +8,7 @@ from scipy.io import loadmat
 
 from statgen.genotype import load_genotype
 from statgen.reference import load_reference
-from tests.conftest import FIXTURES_DIR, run_octave, skipif_no_octave
+from tests.conftest import FIXTURES_DIR, matlab_output_text, run_octave, skipif_no_octave
 
 pytestmark = [pytest.mark.octave, skipif_no_octave]
 ROOT = FIXTURES_DIR / "allele_swaps"
@@ -282,4 +282,5 @@ def test_no_matching_sumstats_rows_warning(source_row, should_warn, verbosity, t
         "if ~any(s.is_present); assert(all(isnan(s.logpvec))); end;"
     )
     warning = f"{source}: no matching source rows for reference shard '1'"
-    assert (warning in result.stderr + result.stdout) == should_warn
+    combined = matlab_output_text(result.stderr + result.stdout)
+    assert (matlab_output_text(warning) in combined) == should_warn

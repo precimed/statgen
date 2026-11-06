@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -282,18 +283,19 @@ def test_matlab_cache_fixtures_load_and_match_sources():
 @pytest.mark.octave
 @skipif_no_octave
 @pytest.mark.parametrize(
-    "kind,schema,field",
+    "kind,schema,field,format",
     [
-        ("reference", "0_1", "bp"),
-        ("annotations", "0_2", "annomat"),
-        ("sumstats", "0_1", "logpvec"),
-        ("genotype", "0_2", "is_present"),
+        # Each writer passes its own default; overrides share parse_mat_format,
+        # except reference, which has its own option parser.
+        ("reference", "0_1", "bp", None),
+        ("annotations", "0_2", "annomat", None),
+        ("sumstats", "0_1", "logpvec", None),
+        ("genotype", "0_2", "is_present", None),
+        ("reference", "0_1", "bp", "v5"),
+        ("genotype", "0_2", "is_present", "v7"),
     ],
 )
-@pytest.mark.parametrize("format", [None, "v7", "v5"])
 def test_matlab_cache_runtime_default_and_overrides(tmp_path, kind, schema, field, format):
-    import os
-
     cache = tmp_path / "cache.mat"
     fixture = CACHE_DIR / f"{kind}_matlab_{kind}_cache_{schema}.mat"
     options = "" if format is None else f", 'format', '{format}'"
@@ -319,15 +321,20 @@ def test_matlab_cache_runtime_default_and_overrides(tmp_path, kind, schema, fiel
 @pytest.mark.octave
 @skipif_no_octave
 @pytest.mark.parametrize(
-    "kind,schema",
-    [("reference", "0_1"), ("annotations", "0_2"), ("sumstats", "0_1"), ("genotype", "0_2")],
+    "kind,schema,warning_state",
+    [
+        # One case per writer; vary the caller's prior warning state across them.
+        ("reference", "0_1", "on"),
+        ("annotations", "0_2", "off"),
+        ("sumstats", "0_1", "error"),
+        ("genotype", "0_2", "on"),
+    ],
 )
-@pytest.mark.parametrize("format", ["v7", "v5"])
-@pytest.mark.parametrize("warning_state", ["on", "off", "error"])
 def test_matlab_cache_size_warning_fails_and_restores_warning_state(
-    tmp_path, kind, schema, format, warning_state
+    tmp_path, kind, schema, warning_state
 ):
-    # Simulate the real save warning without allocating a >2GB variable.
+    # Simulate the real save warning without allocating a >2GB variable; the
+    # shadowed save ignores the format, so a single explicit format suffices.
     shadow = tmp_path / "shadow"
     shadow.mkdir()
     (shadow / "save.m").write_text(
@@ -343,7 +350,7 @@ def test_matlab_cache_size_warning_fails_and_restores_warning_state(
         f"warning('{warning_state}', warning_id); "
         f"addpath('{shadow}', '-begin'); "
         "caught_id = ''; "
-        f"try; original.save_cache('{tmp_path / 'cache.mat'}', 'format', '{format}'); "
+        f"try; original.save_cache('{tmp_path / 'cache.mat'}', 'format', 'v7'); "
         "catch ME; caught_id = ME.identifier; end; "
         "restored = warning('query', warning_id); "
         f"rmpath('{shadow}'); "
