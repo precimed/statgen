@@ -41,7 +41,9 @@ def test_r_package_skeleton_present():
         assert (R_PACKAGE_DIR / rel).is_file(), f"missing R package file: {rel}"
 
 
-def test_r_extdata_reference_fixture_matches_canonical_source():
+@pytest.mark.r
+@skipif_no_rscript
+def test_r_extdata_reference_fixture_matches_canonical_source(prepare_r_extdata_fixtures):
     for r_name, canonical_rel in R_EXTDATA_COPIES.items():
         r_fixture = R_PACKAGE_DIR / f"inst/extdata/{r_name}"
         canonical = FIXTURES_DIR / canonical_rel
@@ -49,7 +51,9 @@ def test_r_extdata_reference_fixture_matches_canonical_source():
         assert r_fixture.read_bytes() == canonical.read_bytes()
 
 
-def test_r_extdata_ld_manifest_is_prepared_for_r():
+@pytest.mark.r
+@skipif_no_rscript
+def test_r_extdata_ld_manifest_is_prepared_for_r(prepare_r_extdata_fixtures):
     r_manifest_path = R_PACKAGE_DIR / "inst/extdata/ld/ld_manifest.json"
     r_reference_cache = R_PACKAGE_DIR / "inst/extdata/ld/reference_cache.rds"
     canonical_manifest_path = FIXTURES_DIR / "ld/python/ld_manifest.json"
@@ -97,7 +101,7 @@ def test_rscript_phase0_source_smoke():
 
 @pytest.mark.r
 @skipif_no_rscript
-def test_r_package_install_and_library_smoke(tmp_path):
+def test_r_package_install_and_library_smoke(tmp_path, prepare_r_extdata_fixtures):
     deps = run_rscript(
         "pkgs <- c('Matrix', 'jsonlite', 'digest', 'bit64', 'data.table', 'R.utils', 'testthat'); "
         "missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; "
