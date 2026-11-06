@@ -1,4 +1,8 @@
+from dataclasses import dataclass
+
 import numpy as np
+
+from ._utils import _is_single_base, _is_single_nucleotide_variant, _is_strand_ambiguous
 
 _KEY_DTYPE = np.dtype([("bp", "<i8"), ("a1_hash64", "<u8"), ("a2_hash64", "<u8")])
 
@@ -30,47 +34,72 @@ def check_unique_sorted_variant_keys(sorted_keys: np.ndarray, where: str, object
         )
 
 
+@dataclass(frozen=True)
+class VariantMatch:
+    source_rows: np.ndarray
+    is_allele_swapped: np.ndarray
+    num_strand_ambiguous: int
+    num_disabled_indels: int
+
+
+def _lookup_candidates(ref_keys, src_keys, source_rows, shard_label, source_name, candidate_eligible=None):
+    """Return unique eligible source rows and count hits from ineligible rows."""
+    order = np.argsort(src_keys, kind="mergesort", order=("bp", "a1_hash64", "a2_hash64"))
+    sorted_keys = src_keys[order]
+    left = np.searchsorted(sorted_keys, ref_keys, side="left")
+    right = np.searchsorted(sorted_keys, ref_keys, side="right")
+    present = right > left
+    accepted = present.copy()
+    if candidate_eligible is not None:
+        # A key fixes both allele hashes, so all candidates for a slot have
+        # the same allele class and eligibility, even when they are duplicates.
+        accepted[present] = candidate_eligible[order[left[present]]]
+    excluded_hits = int(np.sum((right - left)[present & ~accepted]))
+    ambiguous = (right - left > 1) & accepted
+    if np.any(ambiguous):
+        key = ref_keys[np.flatnonzero(ambiguous)[0]]
+        raise ValueError(
+            f"Ambiguous duplicate {source_name}/reference matching key in shard {shard_label}: "
+            f"bp={int(key['bp'])}, a1_hash64={int(key['a1_hash64'])}, "
+            f"a2_hash64={int(key['a2_hash64'])}"
+        )
+    out = np.full(ref_keys.size, -1, dtype=np.int64)
+    out[accepted] = source_rows[order[left[accepted]]]
+    return out, excluded_hits
+
+
 def match_shard_numeric(
     ref_keys: np.ndarray,
     src_keys: np.ndarray,
     shard_label: str,
     *,
     source_name: str = "source",
-) -> tuple[np.ndarray, int]:
-    ref_order = np.argsort(ref_keys, kind="mergesort", order=("bp", "a1_hash64", "a2_hash64"))
-    ref_sorted = ref_keys[ref_order]
-    check_unique_sorted_variant_keys(ref_sorted, f"reference shard {shard_label}", source_name)
-
-    if src_keys.size == 0:
-        return np.full(ref_keys.size, -1, dtype=np.int64), 0
-
-    src_order = np.argsort(src_keys, kind="mergesort", order=("bp", "a1_hash64", "a2_hash64"))
-    src_sorted = src_keys[src_order]
-    check_unique_sorted_variant_keys(src_sorted, f"{source_name} shard {shard_label}", source_name)
-
-    pos = np.searchsorted(src_sorted, ref_keys)
-    in_range = pos < src_sorted.size
-    matched = np.zeros(ref_keys.size, dtype=bool)
-    matched[in_range] = src_sorted[pos[in_range]] == ref_keys[in_range]
-
-    out = np.full(ref_keys.size, -1, dtype=np.int64)
-    out[matched] = src_order[pos[matched]]
-
-    matched_src = np.zeros(src_keys.size, dtype=bool)
-    matched_src[out[matched]] = True
-    unmatched_src = src_keys[~matched_src]
-    if unmatched_src.size == 0 or ref_sorted.size == 0:
-        return out, 0
-
-    swapped_src = np.empty(unmatched_src.size, dtype=_KEY_DTYPE)
-    swapped_src["bp"] = unmatched_src["bp"]
-    swapped_src["a1_hash64"] = unmatched_src["a2_hash64"]
-    swapped_src["a2_hash64"] = unmatched_src["a1_hash64"]
-    swapped_pos = np.searchsorted(ref_sorted, swapped_src)
-    swapped_in_range = swapped_pos < ref_sorted.size
-    swapped_match = np.zeros(swapped_src.size, dtype=bool)
-    swapped_match[swapped_in_range] = (
-        ref_sorted[swapped_pos[swapped_in_range]]
-        == swapped_src[swapped_in_range]
+    allow_indel_swaps: bool = False,
+) -> VariantMatch:
+    # Reference validation belongs to load_reference, including for cached panels.
+    rows, _ = _lookup_candidates(
+        ref_keys, src_keys, np.arange(src_keys.size), shard_label, source_name
     )
-    return out, int(np.count_nonzero(swapped_match))
+    swapped = np.zeros(ref_keys.size, dtype=bool)
+    unused = np.ones(src_keys.size, dtype=bool)
+    unused[rows[rows >= 0]] = False
+    a1h = src_keys["a1_hash64"]
+    a2h = src_keys["a2_hash64"]
+    snv = _is_single_nucleotide_variant(a1h, a2h)
+    indel = _is_single_base(a1h) ^ _is_single_base(a2h)
+    eligible = snv | (indel & allow_indel_swaps)
+    source_rows = np.flatnonzero(unused & (snv | indel))
+    reversed_keys = numeric_variant_keys(
+        src_keys["bp"], src_keys["a2_hash64"], src_keys["a1_hash64"]
+    )
+    missing = np.flatnonzero(rows < 0)
+    fallback, disabled = _lookup_candidates(
+        ref_keys[missing], reversed_keys[source_rows], source_rows, shard_label, source_name,
+        candidate_eligible=eligible[source_rows],
+    )
+    accepted = missing[fallback >= 0]
+    rows[accepted] = fallback[fallback >= 0]
+    swapped[accepted] = True
+    selected = rows[swapped]
+    ambiguous = _is_strand_ambiguous(a1h, a2h)[selected]
+    return VariantMatch(rows, swapped, int(np.count_nonzero(ambiguous)), disabled)

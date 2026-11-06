@@ -329,10 +329,12 @@ def _full_variant_rows():
             else:
                 category = "ld"
             ref, alt = allele_pairs[i % len(allele_pairs)]
-            if i < len(allele_pairs):
+            # The same-position cluster shares REF=A. Reciprocal SNVs at
+            # one coordinate are invalid references under the swap contract.
+            if i < 3:
                 pos = cfg["base"]
             else:
-                pos = cfg["base"] + 100 * (i - len(allele_pairs) + 1)
+                pos = cfg["base"] + 100 * (i - 3 + 1)
             rows.append(
                 {
                     "chrom": chrom,

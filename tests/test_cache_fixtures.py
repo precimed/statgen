@@ -41,6 +41,7 @@ EXPECTED_CACHE_FIXTURES = [
     ("annotations", "python", "annotations_cache_0_1", "npz", "py"),
     ("annotations", "matlab", "annotations_cache_0_1", "mat", "m"),
     ("annotations", "r", "annotations_cache_0_1", "rds", "R"),
+    ("genotype", "python", "genotype_cache_0_2", "npz", "py"),
     ("genotype", "python", "genotype_cache_0_1", "npz", "py"),
     ("genotype", "matlab", "genotype_cache_0_1", "mat", "m"),
     ("genotype", "r", "genotype_cache_0_1", "rds", "R"),
@@ -107,6 +108,7 @@ def test_python_cache_fixtures_load_and_match_sources():
 
     genotype = load_genotype(GENOTYPE, ref)
     genotype_cached = load_genotype_cache(CACHE_DIR / "genotype_python_genotype_cache_0_1.npz")
+    assert not genotype_cached.is_allele_swapped.any()
     np.testing.assert_array_equal(genotype_cached.is_present, genotype.is_present)
     np.testing.assert_allclose(genotype_cached.ploidy_male, genotype.ploidy_male, equal_nan=True)
     np.testing.assert_allclose(genotype_cached.ploidy_female, genotype.ploidy_female, equal_nan=True)
@@ -117,6 +119,23 @@ def test_python_cache_fixtures_load_and_match_sources():
         genotype_cached.fetch_genotypes_int8([0, 5, 7]),
         genotype.fetch_genotypes_int8([0, 5, 7]),
     )
+
+
+def test_python_genotype_0_2_cache_fixture_preserves_swaps_and_fetch():
+    reference = load_reference(FIXTURES_DIR / "allele_swaps/reference.bim")
+    genotype = load_genotype(FIXTURES_DIR / "allele_swaps/genotype/@", reference, allow_indel_swaps=True)
+    cache = CACHE_DIR / "genotype_python_genotype_cache_0_2.npz"
+    with np.load(cache, allow_pickle=False) as data:
+        assert json.loads(bytes(data["_meta"]))["schema"] == "genotype_cache/0.2"
+    cached = load_genotype_cache(cache)
+    assert cached.is_allele_swapped.any()
+    np.testing.assert_array_equal(cached.is_allele_swapped, genotype.is_allele_swapped)
+    np.testing.assert_array_equal(cached.is_present, genotype.is_present)
+    np.testing.assert_array_equal(cached.source_row0, genotype.source_row0)
+    # Include every present row and repeated SNV/indel requests from both shards.
+    requested = np.r_[np.flatnonzero(genotype.is_present), [1, 4, 13, 15, 1]]
+    np.testing.assert_array_equal(cached.fetch_genotypes_int8(requested),
+                                  genotype.fetch_genotypes_int8(requested))
 
 
 def _r_script(expr: str) -> str:

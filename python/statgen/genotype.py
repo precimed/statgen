@@ -16,10 +16,12 @@ from ._bfile_utils import (
     _validate_bed,
 )
 from ._utils import allele_hash64, validate_requested_shards
+from ._verbosity import report_variant_swaps
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
-_CACHE_SCHEMA = "genotype_cache/0.1"
+_CACHE_SCHEMA = "genotype_cache/0.2"
 _BED_MISSING_INT8 = np.int8(-1)
+_SWAP_LUT = np.array([-1, 2, 1, 0], dtype=np.int8)
 _HAPLOID_MODES = {"raw", "ploidy_scaled"}
 _CACHE_ARRAY_FIELDS = (
     "is_present",
@@ -153,6 +155,7 @@ class GenotypeShard:
         ploidy_male,
         ploidy_female,
         reference_checksum,
+        is_allele_swapped,
     ):
         self._label = str(label)
         self._bed_path = Path(bed_path)
@@ -170,10 +173,12 @@ class GenotypeShard:
 
         self._source_row0 = np.asarray(source_row0, dtype=np.int64).reshape(-1)
         self._is_present = np.asarray(is_present, dtype=bool).reshape(-1)
+        self._is_allele_swapped = np.asarray(is_allele_swapped, dtype=bool).reshape(-1)
         self._ploidy_male = np.asarray(ploidy_male, dtype=float).reshape(-1)
         self._ploidy_female = np.asarray(ploidy_female, dtype=float).reshape(-1)
         if not (
             self._source_row0.size
+            == self._is_allele_swapped.size
             == self._is_present.size
             == self._ploidy_male.size
             == self._ploidy_female.size
@@ -184,6 +189,8 @@ class GenotypeShard:
         bad_source = (self._source_row0 < -1) | (self._source_row0 >= self._source_num_snp)
         if bad_source.any():
             raise ValueError(f"GenotypeShard {self._label}: source_row0 out of source BIM bounds")
+        if np.any(self._is_allele_swapped & ~self._is_present):
+            raise ValueError("is_allele_swapped requires is_present")
         absent = ~self._is_present
         if np.any(~np.isnan(self._ploidy_male[absent])) or np.any(~np.isnan(self._ploidy_female[absent])):
             raise ValueError(f"GenotypeShard {self._label}: absent SNPs must have NaN ploidy")
@@ -207,6 +214,7 @@ class GenotypeShard:
         for name in (
             "_source_row0",
             "_is_present",
+            "_is_allele_swapped",
             "_ploidy_male",
             "_ploidy_female",
             "_subject_present",
@@ -257,6 +265,10 @@ class GenotypeShard:
     @property
     def is_present(self) -> np.ndarray:
         return self._is_present
+
+    @property
+    def is_allele_swapped(self) -> np.ndarray:
+        return self._is_allele_swapped
 
     @property
     def ploidy_male(self) -> np.ndarray:
@@ -339,6 +351,10 @@ class GenotypePanel:
         if not self._shards:
             return np.array([], dtype=bool)
         return np.concatenate([s.is_present for s in self._shards])
+
+    @property
+    def is_allele_swapped(self) -> np.ndarray:
+        return np.concatenate([s.is_allele_swapped for s in self._shards])
 
     @property
     def ploidy_male(self) -> np.ndarray:
@@ -475,6 +491,9 @@ class GenotypePanel:
                 source_rows,
                 shard.source_num_sample,
             )
+            sc = np.flatnonzero(shard.is_allele_swapped[local_indices])
+            if sc.size:
+                source_geno[:, sc] = _SWAP_LUT[source_geno[:, sc] + 1]
             panel_rows = np.flatnonzero(shard.subject_present)
             if panel_rows.size:
                 source_subject_rows = shard.source_subject_row0[panel_rows]
@@ -572,8 +591,9 @@ def _map_chrx_subjects(chrx_fam: pd.DataFrame, panel_fam: pd.DataFrame, where: s
     return subject_present, source_subject_row0
 
 
-def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subject_row0) -> GenotypeShard:
+def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subject_row0, allow_indel_swaps) -> GenotypeShard:
     source_bim = source.bim.loc[source.bim["chr"] == ref_shard.label]
+    is_allele_swapped = np.zeros(int(ref_shard.num_snp), dtype=bool)
     if source_bim.empty:
         local_match = np.full(int(ref_shard.num_snp), -1, dtype=np.int64)
     else:
@@ -583,15 +603,14 @@ def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subje
             source_bim["a1_hash64"].to_numpy(dtype=np.uint64),
             source_bim["a2_hash64"].to_numpy(dtype=np.uint64),
         )
-        local_match, n_swapped = match_shard_numeric(ref_keys, src_keys, ref_shard.label, source_name="genotype")
-        if n_swapped > 0:
-            warnings.warn(
-                f"{source.bim_path}: shard {ref_shard.label}: {n_swapped} unmatched genotype "
-                "variant(s) would match the reference if a1/a2 were swapped; "
-                "variants remain unmatched",
-                RuntimeWarning,
-                stacklevel=3,
-            )
+        match = match_shard_numeric(
+            ref_keys, src_keys, ref_shard.label, source_name="genotype",
+            allow_indel_swaps=allow_indel_swaps,
+        )
+        local_match = match.source_rows
+        is_allele_swapped = match.is_allele_swapped
+        report_variant_swaps(source.bim_path, ref_shard.label, np.count_nonzero(is_allele_swapped),
+                             match.num_strand_ambiguous, match.num_disabled_indels)
 
     is_present = local_match >= 0
     source_row0 = np.full(int(ref_shard.num_snp), -1, dtype=np.int64)
@@ -613,6 +632,7 @@ def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subje
         subject_present=subject_present,
         source_subject_row0=source_subject_row0,
         is_present=is_present,
+        is_allele_swapped=is_allele_swapped,
         ploidy_male=ploidy_male,
         ploidy_female=ploidy_female,
         reference_checksum=ref_shard.checksum,
@@ -628,7 +648,7 @@ def _validate_reference_for_genotype(reference) -> list:
     return ref_shards
 
 
-def load_genotype(bfile_prefix, reference) -> GenotypePanel:
+def load_genotype(bfile_prefix, reference, allow_indel_swaps=False) -> GenotypePanel:
     ref_shards = _validate_reference_for_genotype(reference)
     prefix = str(bfile_prefix)
     ref_labels = [s.label for s in ref_shards]
@@ -682,7 +702,7 @@ def load_genotype(bfile_prefix, reference) -> GenotypePanel:
             subject_maps["X"] = _all_subjects_present(sources["X"].source_num_sample)
 
     shards = [
-        _build_shard(ref_shard, sources[ref_shard.label], *subject_maps[ref_shard.label])
+        _build_shard(ref_shard, sources[ref_shard.label], *subject_maps[ref_shard.label], allow_indel_swaps)
         for ref_shard in ref_shards
     ]
     return GenotypePanel(
@@ -714,6 +734,7 @@ def save_genotype_cache(panel: GenotypePanel, path) -> None:
     arrays = {
         "_meta": np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8),
         "is_present": panel.is_present.astype(bool, copy=False),
+        "is_allele_swapped": panel.is_allele_swapped,
         "ploidy_male": panel.ploidy_male.astype(float, copy=False),
         "ploidy_female": panel.ploidy_female.astype(float, copy=False),
         "source_row0": panel.source_row0.astype(np.int64, copy=False),
@@ -744,9 +765,10 @@ def _load_cache_meta(data) -> dict:
 
 def _validate_cache_meta(meta: dict, data) -> None:
     schema = meta.get("schema")
-    if schema != _CACHE_SCHEMA:
+    if schema not in {_CACHE_SCHEMA, "genotype_cache/0.1"}:
         raise ValueError(f"Unsupported genotype cache schema: {schema!r}")
-    missing = [name for name in _CACHE_ARRAY_FIELDS if name not in data.files]
+    required = _CACHE_ARRAY_FIELDS + (("is_allele_swapped",) if schema == _CACHE_SCHEMA else ())
+    missing = [name for name in required if name not in data.files]
     if missing:
         raise ValueError(f"Invalid genotype cache: missing array field {missing[0]!r}")
     n_shards = int(meta.get("n_shards", -1))
@@ -773,6 +795,12 @@ def _validate_cache_meta(meta: dict, data) -> None:
         raise ValueError("Invalid genotype cache: source_layout must be 'non_sharded' or 'sharded'")
 
     is_present = data["is_present"]
+    if schema == _CACHE_SCHEMA:
+        swapped = data["is_allele_swapped"]
+        if swapped.dtype != np.dtype(bool) or swapped.shape != is_present.shape:
+            raise ValueError("Invalid genotype cache: is_allele_swapped must be a logical SNP-axis vector")
+        if np.any(swapped & ~is_present.astype(bool)):
+            raise ValueError("Invalid genotype cache: is_allele_swapped requires is_present")
     source_row0 = data["source_row0"]
     if is_present.ndim != 1 or source_row0.ndim != 1 or is_present.shape[0] != source_row0.shape[0]:
         raise ValueError("Invalid genotype cache: SNP-axis vector lengths mismatch")
@@ -817,6 +845,8 @@ def load_genotype_cache(path, shards=None) -> GenotypePanel:
         selected = validate_requested_shards(shards, labels, "load_genotype_cache")
         label_to_index = {label: i for i, label in enumerate(labels)}
 
+        swap_flags = (data["is_allele_swapped"] if meta["schema"] == _CACHE_SCHEMA
+                      else np.zeros(data["is_present"].size, dtype=bool))
         shard_objs = []
         for label in selected:
             i = label_to_index[label]
@@ -833,6 +863,7 @@ def load_genotype_cache(path, shards=None) -> GenotypePanel:
                     subject_present=data["subject_present"][:, i],
                     source_subject_row0=data["source_subject_row0"][:, i],
                     is_present=data["is_present"][start:stop],
+                    is_allele_swapped=swap_flags[start:stop],
                     ploidy_male=data["ploidy_male"][start:stop],
                     ploidy_female=data["ploidy_female"][start:stop],
                     reference_checksum=meta["shard_checksums"][i],

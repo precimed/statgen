@@ -140,7 +140,7 @@ def test_load_sumstats_duplicate_matching_key_fails(tmp_path):
         load_sumstats(path, reference)
 
 
-def test_load_sumstats_warns_on_unmatched_swapped_alleles(tmp_path):
+def test_load_sumstats_orients_swapped_alleles(tmp_path, capsys):
     path = tmp_path / "swapped.tsv.gz"
     _write_gz_tsv(
         path,
@@ -149,12 +149,13 @@ def test_load_sumstats_warns_on_unmatched_swapped_alleles(tmp_path):
         "1\t200\tT\tC\t1.0\t1000\t0.02\n",
     )
     reference = load_reference(SHARDED_REF, shards=["1"])
-    with pytest.warns(RuntimeWarning, match="shard 1: 1 unmatched sumstats variant.*swapped"):
-        s = load_sumstats(path, reference)
+    s = load_sumstats(path, reference)
+    assert "shard 1: 1 successful allele swap" in capsys.readouterr().err
+    assert s.zvec[1] == -1.0
 
     np.testing.assert_array_equal(
         s.is_present,
-        np.array([True, False, False, False, False]),
+        np.array([True, True, False, False, False]),
     )
 
 
@@ -346,7 +347,7 @@ def test_invalid_p_values_fail(tmp_path, bad_p):
         load_sumstats(path, reference)
 
 
-def test_allele_flip_does_not_match_reference_key(tmp_path):
+def test_allele_flip_orients_values_to_reference(tmp_path):
     path = tmp_path / "allele_flip.tsv.gz"
     _write_gz_tsv(
         path,
@@ -355,12 +356,11 @@ def test_allele_flip_does_not_match_reference_key(tmp_path):
         "X\t100\tA\tG\t3.0\t500\t0.01\n",
     )
     reference = load_reference(SHARDED_REF)
-    with pytest.warns(RuntimeWarning, match="would match the reference if a1/a2 were swapped"):
-        s = load_sumstats(path, reference)
+    s = load_sumstats(path, reference)
 
-    assert np.isnan(s.zvec[0])
-    assert np.isnan(s.nvec[0])
-    assert np.isnan(s.logpvec[0])
+    assert s.zvec[0] == -7.0
+    assert s.nvec[0] == 1000
+    assert s.logpvec[0] == 2.0
     assert s.zvec[5] == 3.0
 
 

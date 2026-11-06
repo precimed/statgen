@@ -754,3 +754,40 @@ def test_plink2_missing_binary_and_nonzero_exit_errors(tmp_path):
 
     with pytest.raises(RuntimeError, match="PLINK2 command failed:"):
         mod._run([str(failing), "--freq"])
+
+
+def test_build_reference_rejects_reciprocal_snvs(tmp_path):
+    mod = _load_build_module()
+    prefix = tmp_path / "source"
+    prefix.with_suffix(".bed").write_bytes(b"\x6c\x1b\x01\x00\x00")
+    prefix.with_suffix(".fam").write_text("f\ti\t0\t0\t1\t-9\n")
+    prefix.with_suffix(".bim").write_text(
+        "1\ta\t0\t100\tA\tG\n1\tb\t0\t100\tG\tA\n")
+    with pytest.raises(ValueError, match="reciprocal SNV"):
+        mod._discover_bfile_shards(prefix, "1")
+
+
+def test_ld_ordered_string_index_rejects_ambiguous_reference():
+    from types import SimpleNamespace
+
+    mod = _load_build_module()
+    reference = SimpleNamespace(num_snp=2, chr=np.array(["1", "1"]),
+                                bp=np.array([100, 100]), a1=np.array(["A", "A"]),
+                                a2=np.array(["G", "G"]))
+    with pytest.raises(ValueError, match="duplicate chr:bp:a1:a2"):
+        mod._reference_key_index(reference)
+
+
+def test_ld_output_matching_remains_exact_without_swaps(tmp_path):
+    mod = _load_build_module()
+    reference = load_reference(SHARDED_REF, shards=["1"]).shards[0]
+    frequency = tmp_path / "reversed.afreq"
+    frequency.write_text("#CHROM\tPOS\tREF\tALT1\tALT1_FREQ\n1\t100\tA\tG\t0.3\n")
+    with pytest.raises(ValueError, match="frequency row references variant absent"):
+        mod._parse_afreq(frequency, reference)
+    correlations = tmp_path / "reversed.vcor"
+    correlations.write_text(
+        "#CHROM_A\tPOS_A\tREF_A\tALT1_A\tCHROM_B\tPOS_B\tREF_B\tALT1_B\tUNPHASED_R\n"
+        "1\t100\tA\tG\t1\t200\tT\tC\t0.25\n")
+    with pytest.raises(ValueError, match="LD row references variant absent"):
+        mod._parse_vcor(correlations, reference)
