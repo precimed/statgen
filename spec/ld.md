@@ -340,6 +340,14 @@ exchange is not a goal.
 
 ### Python LD builder
 
+The builder constructs its reference from the same PLINK 1 bfile used to
+compute LD, through `load_reference` and its
+[reference validation](contigs-and-shards.md#duplicate-key-validation).
+PLINK output variants must match exactly one reference row by ordered
+`(chr, bp, a1, a2)` strings, without swap fallback. The builder must fail cleanly
+on any unmatched variant or ambiguity when matching LD correlations to the
+reference panel.
+
 `statgen_build_ld.py` builds the Python `.npz` LD distribution and handoff
 files from a PLINK bfile. It accepts both input layouts:
 

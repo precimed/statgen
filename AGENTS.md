@@ -24,7 +24,7 @@ Preserve portable file formats (`ld_shard` binary layout, BIM column order, sums
 
 ## Domain guardrails
 
-Do not normalize contig labels, swap alleles, or silently drop unmatched variants. `statgen` consumes post-harmonization inputs as-is. Fail early on ambiguous chromosome naming, allele convention, or checksum mismatch.
+Do not normalize contig labels, swap alleles except as explicitly described in the spec, or silently drop unmatched variants. `statgen` consumes post-harmonization inputs as-is. Fail early on ambiguous chromosome naming, allele convention, or checksum mismatch.
 
 ## Reproducibility
 

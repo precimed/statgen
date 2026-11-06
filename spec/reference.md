@@ -12,14 +12,17 @@ the input contract in [SPEC.md](SPEC.md):
 - `snp`: SNP identifier;
 - `bp`: base-pair position;
 - `a1`, `a2`: ordered alleles under the allele contract in
-  [SPEC.md](SPEC.md); `a1` is the non-reference allele, `a2` is
-  the reference allele.
+  [SPEC.md](SPEC.md); `a1` is the alternative allele (ALT), and `a2` is
+  the reference allele (REF).
 
 Optional columns include `source` and `variant_id`.
 
 ## Disk representation
 
-Canonical disk representation is PLINK-style `.bim`:
+Sites-only `.vcf` and PLINK 2 `.pvar` illustrate the reference panel's REF/ALT
+semantics. Reference source loading supports PLINK-style `.bim`, with allele
+roles specified in
+[SPEC.md](SPEC.md#contig-naming-genome-build-and-allele-contract):
 
 ```text
 chr  snp  cm  bp  a1  a2
@@ -114,28 +117,59 @@ This bound is part of the cross-runtime contract. It allows runtimes without a
 native unsigned 64-bit scalar, such as R, to store allele hashes exactly in a
 signed 64-bit representation.
 
-Source-to-reference matching for variant-bearing source files, including
-summary statistics and genotype BIM sources, uses the tuple `(shard label, bp,
-a1_hash64, a2_hash64)`. The allele hashes are not used for reference
-compatibility checks; compatibility continues to use the stored per-shard
-`reference_checksum`. The allele hashes are not security primitives. Collision
-risk is negligible for non-adversarial allele strings in this use.
-Duplicate-key validation follows
+## Source-to-reference matching
+
+An exact match requires the same chromosome and position, with the source
+effect allele (sumstats) or counted allele (genotypes) matching reference `a1`
+(ALT), and the source other or non-counted allele matching reference `a2` (REF).
+`load_sumstats` and `load_genotype` implement this using `(shard label, bp,
+a1_hash64, a2_hash64)`; marker IDs are ignored. Reference validation follows
 [contigs-and-shards.md](contigs-and-shards.md#duplicate-key-validation).
+Compatibility checks use the orientation-sensitive `reference_checksum`, not
+allele hashes; hash collisions are assumed negligible for non-adversarial inputs.
 
-After exact matching, implementations warn if any unmatched source-side variant
-would have matched the reference within the same shard had `a1_hash64` and
-`a2_hash64` been swapped. The warning names the source file, shard label, and
-count of such variants. This is diagnostic only: those variants remain
-unmatched, and callers must not silently flip alleles, repair strand issues, or
-otherwise rescue them.
+Source order is not relevant. Match in two passes:
 
-Implementations should match within each shard using native hash-preserving
-operations over `(bp, a1_hash64, a2_hash64)`. MATLAB/Octave implementations
-should use a native numeric sort/merge; equivalent native numeric approaches
-are allowed. Implementations must not reconstruct string join keys and must
-not cast `uint64` hashes to `double` for matching because values above `2^53`
-would lose precision.
+1. For each reference slot, assign its exact match, regardless of
+   allele length. More than one exact source candidate is an error.
+2. Only for still-unmatched reference slots, try reversed alleles from unused
+   source rows. More than one eligible swapped candidate is an error.
+   SNV swaps are always enabled. Indel swaps require the per-load logical option
+   `allow_indel_swaps=true` (default `false`; MATLAB/Octave:
+   `'allow_indel_swaps', true`). Here, an eligible indel has exactly one
+   single-base allele and one longer allele. Pairs with two multi-base alleles
+   match exactly but never through swap fallback.
+
+Each source row fills at most one reference slot. Exact matches win even when
+their statistics or calls are missing. Do not attempt swaps for source rows
+already assigned by exact matching. Swapped candidates for a reference slot
+already filled by an exact match do not create ambiguity; retain the exact
+match. Source duplicates that cannot populate a reference slot need no check.
+Reciprocal source rows such as `A/G` and `G/A` are allowed; the exact row wins.
+Reciprocal indels such as `A/AG` and `AG/A` may also coexist in the reference:
+a source row used by its exact reference slot cannot fill the reversed slot.
+
+Swaps exchange complete alleles at the same coordinate and assume consistent
+strand, including for `A/T` and `C/G`. They do not complement strands, normalize
+alleles, rewrite source rows or reference data, or change checksums. Values are
+oriented to reference `a1` as defined in the sumstats and genotype specs.
+
+At verbosity `info`, report only nonzero counts, identified by source file
+and shard:
+
+- Successful swaps, with `A/T` and `C/G` swaps counted separately as a subset.
+- Indel rows unmatched because indel swaps are disabled: unused rows whose
+  reversed key matches a still-unmatched reference slot.
+
+These counts are informational, not warnings, and are suppressed at `quiet`.
+Unused reciprocal rows superseded by exact matches are not reported.
+
+Matching, swap eligibility, and `A/T`/`C/G` classification must use allele
+hashes only, without decoding or inspecting allele strings. Single-base
+alleles are identified by comparing hashes with the hashes of `A`, `C`, `G`,
+and `T`, computed with the hash function above. Matching must preserve all
+64 bits of allele hashes, use native numeric operations, and avoid composite
+string keys.
 
 Regardless of how the panel is sharded, callers access genome-wide vectors and
 matrices through read-only panel-level accessors that concatenate across shards

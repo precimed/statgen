@@ -277,6 +277,40 @@ Tests should also cover:
 - genotype metadata alignment, cache round-trips, missing-source masks, ploidy
   vectors, and selected on-demand genotype slices.
 
+## Allele swap matching
+
+Python, MATLAB/Octave, and R tests must cover the matching policy in
+[reference.md](reference.md#source-to-reference-matching):
+
+- exact and reversed SNV source alleles aligned to a reference following the
+  REF/ALT contract, including `A/T` and `C/G`, reference-order output, and
+  independence from sumstats source row order;
+- reciprocal source SNVs accepted with the exact row winning, including when
+  its optional statistics or genotype calls are missing;
+- `load_reference` rejects duplicate ordered keys and reciprocal SNVs;
+  cache-loaded references are trusted without repeating source validation;
+- matching rejects multiple exact source candidates or, absent an exact match,
+  multiple eligible swapped candidates; unmatched sumstats duplicates are
+  ignored, and swapped candidates do not make a retained exact match ambiguous;
+- opt-in indel swaps, disabled by default, with reciprocal reference/source
+  keys remaining distinct, exact matches taking priority across all rows, and
+  no source-row reuse; verify that disabled indel swaps leave reversed-only
+  candidates unmatched with an `info` count;
+- variants with both alleles multi-base retaining exact matches but never
+  matching through swap fallback, for either value of `allow_indel_swaps`;
+- sumstats transformations, missing values, absent optional fields, and
+  unchanged exact matches;
+- integer and floating genotype fetches, repeated SNP requests, absent
+  subjects, missing calls, chrX/ploidy scaling, BED overrides, swap flags,
+  shard subsetting, and `/0.2` cache round-trips;
+- legacy `/0.1` genotype caches preserving stored mappings and fetching with
+  all-false swap state, using the committed historical fixtures;
+- nonzero swap-related counts at `info`, suppressed at `quiet`,
+  separate strand-ambiguous swap counts, no reports for superseded reciprocal
+  rows, and disabled-indel counts only for still-unmatched reference slots;
+- numeric matching preserving all 64 hash bits without lazy allele-string
+  decoding.
+
 ## Success criteria
 
 The library is complete when univariate LDSC-style preparation and bivariate

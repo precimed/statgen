@@ -8,8 +8,7 @@ shard-label validation.
 
 - `Y` and `MT` are recognized non-supported contigs. They are ignored when
   outside a loader's supported output/projection rather than normalized into a
-  supported shard. Source loaders drop `Y`/`MT` rows before row-order and
-  duplicate-key validation for supported output shards.
+  supported shard. Reference validation excludes `Y`/`MT` rows.
 - Labels such as `chr1`/`chrX` indicate non-preprocessed input and are rejected.
 - Contig labels are never normalized: `chr1`, `1`, and `NC_000001.11` are
   distinct labels; mismatches are not resolved silently.
@@ -19,7 +18,7 @@ chromosomes 1–22 in APIs, manifests, or test fixtures.
 
 ## Row-order contract
 
-Reference and genotype BIM inputs must already be sorted by:
+Reference inputs must already be sorted by:
 
 ```text
 (chr_rank, bp_numeric)
@@ -33,26 +32,32 @@ This contract applies to both non-sharded files (enforced across the full file)
 and sharded files (shard sequence must follow canonical contig order; rows
 within each shard must follow row order).
 
-Loaders must not reorder or deduplicate BIM rows. Loaded reference order defines
-the aligned SNP axis, and genotype BIM/BED/PLOIDY row correspondence must remain
-intact.
+Reference loaders must preserve loaded row order; it defines the aligned SNP
+axis. They must not reorder or deduplicate reference rows.
 
-Sumstats source rows may appear in any order. Loading projects them onto the
-reference axis using the ordered allele identity keys in
-[reference.md](reference.md), independently of source row order.
+For genotype and sumstats matching, source order is not relevant. Matching
+follows [reference.md](reference.md#source-to-reference-matching). Sumstats
+loaders do not separately validate source row order or duplicate keys.
+Genotype BIM row order and ordered-key duplicate checks are
+implementation-dependent.
 
 ## Duplicate-key validation
 
-Duplicate variant matching keys, as defined in [reference.md](reference.md),
-must fail within the following scope:
+Reciprocal SNV keys have the same chromosome and position, with two distinct
+single-base alleles in reversed order: for example, `a1=A, a2=G` and
+`a1=G, a2=A`.
 
-- **BIM inputs**: all supported-contig rows in each loaded file, including
-  chromosomes outside the selected reference shard set.
-- **Sumstats inputs**: all rows on chromosomes selected by the supplied
-  reference, including variants absent from that reference. Duplicate keys on
-  unselected chromosomes are ignored.
+Reference source loading rejects duplicate ordered `(chr, bp, a1_hash64,
+a2_hash64)` keys and reciprocal SNV keys at the same coordinate. Validation
+covers the selected shards; validation outside that set is implementation-dependent.
+Reciprocal multi-base keys remain distinct ordered keys.
 
-Loaders must not silently deduplicate these rows or choose one occurrence.
+These checks belong to `load_reference`. Cache-loaded references are trusted;
+source matching does not repeat reference validation.
+
+Source ambiguity is handled by the
+[matching policy](reference.md#source-to-reference-matching), rather than a
+separate requirement to reject all source duplicate keys.
 
 ## Shard discovery
 

@@ -8,7 +8,8 @@ they hold sample metadata, source-row mapping, ploidy metadata, and `.bed`
 paths, while hardcall genotype payloads remain on disk and are decoded on
 demand.
 
-Counts are oriented to `a1` under the allele contract in [SPEC.md](SPEC.md).
+Returned counts are oriented to reference `a1` under the allele contract in
+[SPEC.md](SPEC.md).
 Other genotype formats (PGEN, BGEN, VCF, dosage) are out of scope and should
 be converted by project-specific preprocessing before entering `statgen`.
 
@@ -82,21 +83,17 @@ not saved by genotype cache APIs.
 
 ## Loading and alignment
 
-`load_genotype(bfile_prefix, reference)` parses BIM, FAM, and optional PLOIDY
+`load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false)`
+parses BIM, FAM, and optional PLOIDY
 metadata, then projects the source variant rows into the supplied
 `ReferencePanel` order. The result has the same shard structure and SNP axis as
 `reference`.
 
-Source-to-reference matching uses the exact same semantic key as sumstats:
-source `chr` must match the reference shard label exactly, and rows are matched
-within that shard on `(bp, a1_hash64, a2_hash64)` according to the shared
-source-to-reference matching contract in [reference.md](reference.md),
-including swapped-allele diagnostics for unmatched source rows. This is an
-exact `chr:bp:a1:a2` join implemented with fixed-width allele hashes. Loaders
-must not normalize chromosome labels, swap alleles, repair strand issues, or
-silently drop duplicate/ambiguous matches. Duplicate `(bp, a1_hash64,
-a2_hash64)` matching keys within a reference shard or source shard are always
-errors.
+Source-to-reference matching is defined in
+[reference.md](reference.md#source-to-reference-matching). Source `chr` must
+match the reference shard label exactly. Matching uses fixed-width allele
+hashes and does not normalize chromosome labels or repair strand issues.
+Source validation follows [contigs-and-shards.md](contigs-and-shards.md).
 
 `load_genotype` is a reference-driven projection from a possibly larger source.
 For non-sharded source input, the source BIM is split by `chr` into
@@ -114,6 +111,11 @@ The aligned variant-presence vector is:
 - `is_present`: logical vector, length equal to the paired reference shard
   or panel. `1` means a matching source BIM row is present after alignment;
   `0` means no source genotype row exists for that reference SNP.
+
+The aligned `is_allele_swapped` logical vector has the same full reference
+axis as `is_present`. It is true only for matched rows accepted by swap
+fallback, and false for exact matches and absent SNPs. It records allele
+orientation independently of whether any subject's hardcall is missing.
 
 Within this genotype spec, `num_snp` in public accessor shapes means the
 reference-axis SNP count of the paired `ReferenceShard` or `ReferencePanel`,
@@ -233,8 +235,8 @@ and returns the corresponding shard's vector. The asymmetry with the SNP axis
 (`is_present` is a flat panel-wide vector) reflects the difference: SNP
 presence is uniform in meaning across shards, while sample presence is
 intrinsically per-shard because only chrX may carry a FAM subset.
-- `is_present`, `ploidy_male`, and `ploidy_female` aligned to the paired
-  reference shard;
+- `is_present`, `is_allele_swapped`, `ploidy_male`, and `ploidy_female`
+  aligned to the paired reference shard;
 - `reference_checksum`: MD5 reference checksum for the paired
   `ReferenceShard`. Genotype shards expose this field by name for reference
   compatibility checks.
@@ -293,6 +295,7 @@ panel-wide variables at top level:
 ```text
 metadata
 is_present
+is_allele_swapped
 ploidy_male
 ploidy_female
 source_row0
@@ -310,7 +313,7 @@ is_female
 `metadata` is a struct with:
 
 ```text
-schema = "genotype_cache/0.1"
+schema = "genotype_cache/0.2"
 n_shards
 shard_labels
 shard_checksums
@@ -324,8 +327,16 @@ source_num_sample
 num_sample
 ```
 
-`is_present` is a panel-wide logical vector. `ploidy_male` and `ploidy_female`
-are panel-wide numeric vectors with `NaN` for `is_present == false`.
+`is_present` and `is_allele_swapped` are panel-wide logical vectors of equal
+length. A true swap flag requires `is_present == true`; cache loaders validate
+this invariant. Writers emit `/0.2` and persist swap state. Loaders
+also accept `genotype_cache/0.1`, initializing all swap flags to false without
+reparsing sources or recomputing matches. Shard selection preserves the stored
+mapping and swap flags on the selected reference axis. Caches store the
+resulting orientation, not the `allow_indel_swaps` loading option.
+
+`ploidy_male` and `ploidy_female` are panel-wide numeric vectors with `NaN`
+for `is_present == false`.
 `source_row0` is a panel-wide integer vector with `-1` for
 `is_present == false`. FAM columns and sex masks are panel-level vectors with
 length `num_sample`. `subject_present` and `source_subject_row0` are stored per
@@ -347,9 +358,9 @@ source files.
 
 R genotype caches are RDS files containing one named list with the same logical
 top-level fields and metadata fields as the MATLAB/Octave cache layout above.
-R `metadata` is a named list. `is_present`, `subject_present`, `is_male`, and
-`is_female` are logical vectors or matrices. `ploidy_male` and `ploidy_female`
-are numeric vectors. `source_row0` and `source_subject_row0` are integer vectors
+R `metadata` is a named list. `is_present`, `is_allele_swapped`,
+`subject_present`, `is_male`, and `is_female` are logical vectors or matrices.
+`ploidy_male` and `ploidy_female` are numeric vectors. `source_row0` and `source_subject_row0` are integer vectors
 or matrices with `-1` for absent SNPs or subjects. FAM columns are character
 vectors; `sex` is an integer or numeric vector preserving FAM sex codes.
 
@@ -379,8 +390,12 @@ num_sample × length(snp_indices)
 
 Columns are returned in exactly the requested `snp_indices` order.
 `fetch_genotypes_int8` is the core hardcall accessor. It returns an `int8`
-matrix with raw PLINK-decoded `a1` counts encoded as `0`, `1`, and `2`, and
-missing hardcalls encoded as `-1`.
+matrix with reference-`a1` counts on the raw diploid scale, encoded as `0`,
+`1`, and `2`, and missing hardcalls encoded as `-1`. After decoding source-`a1`
+counts, replace each nonmissing call `x` with `2 - x` where
+`is_allele_swapped` is true. Missing calls and absent subjects remain missing.
+This orientation step occurs before any ploidy scaling on each fetch; it does
+not mutate BED data or panel metadata.
 
 `fetch_genotypes` wraps `fetch_genotypes_int8` and returns a double-precision
 matrix. Its `haploid_mode` argument defaults to `"raw"`. In `"raw"` mode,
@@ -407,7 +422,7 @@ return repeated genotype columns.
 validates the PLINK BED magic bytes and requires SNP-major mode. For each SNP,
 it reads only the corresponding packed row from disk and decodes it vectorized
 across all subjects. Under the `statgen` allele contract,
-`fetch_genotypes_int8` decodes PLINK two-bit values to `a1` counts as:
+the BED decoder first converts PLINK two-bit values to source-`a1` counts as:
 
 ```text
 00 -> 2
@@ -438,7 +453,8 @@ single-shard subsets of sharded metadata still have sharded physical layout:
 
 The alternate `.bed`
 file(s) must have the same FAM/BIM structure and row order as the metadata
-object, including any chrX sample subset. Since `.bed` files contain no
+object, including source allele orientation and any chrX sample subset.
+Stored swap flags still apply to a BED override. Since `.bed` files contain no
 manifest, the accessor can only validate basic structure: file existence, PLINK
 magic bytes, SNP-major mode, and file size for each addressed shard. The
 accessor validates that the actual disk size of each addressed `.bed` file
@@ -448,12 +464,14 @@ error.
 ## API
 
 ```text
-load_genotype(bfile_prefix, reference) -> GenotypePanel
+load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false)
+    -> GenotypePanel
 save_genotype_cache(panel, path) -> void
 load_genotype_cache(path, optional shards) -> GenotypePanel
 
 GenotypePanel.num_snp -> int
 GenotypePanel.is_present -> num_snp logical vector
+GenotypePanel.is_allele_swapped -> num_snp logical vector
 GenotypePanel.ploidy_male -> num_snp float vector
 GenotypePanel.ploidy_female -> num_snp float vector
 GenotypePanel.num_sample -> int
@@ -486,7 +504,7 @@ Expected behavior:
   bfile shard. Missing `@` source shards are errors; users should call
   `ReferencePanel.select_shards` before `load_genotype` when loading a shard
   subset.
-- Shard discovery, contig validation, and row-order validation follow
+- Shard discovery, contig validation, and row order follow
   [contigs-and-shards.md](contigs-and-shards.md). Source loading does not
   accept a separate `shards` selector; the supplied `reference` defines the
   requested shard set.
@@ -495,9 +513,8 @@ Expected behavior:
   SNP-major mode; exact expected BED file size; BIM/FAM/PLOIDY row counts; and
   FAM sample-axis reconciliation rules.
 - Matching follows the shared source-to-reference matching contract in
-  [reference.md](reference.md). Joins are exact after basic field parsing; the
-  loader does not normalize chromosome labels, swap alleles, or perform strand
-  handling.
+  [reference.md](reference.md#source-to-reference-matching). The loader does
+  not normalize chromosome labels or perform strand handling.
 - `GenotypePanel` does not expose `bim` as a public accessor. BIM is parsed
   only to align source rows to the reference and to construct internal
   `source_row0`.
@@ -520,8 +537,8 @@ Expected behavior:
   metadata are trusted from cache metadata until a genotype fetch addresses the
   corresponding shard.
 - `GenotypePanel.fetch_genotypes_int8` reads hardcalls on demand, returns raw
-  PLINK-decoded `int8` `a1` counts with `-1` for missing calls, and fails on any
-  requested SNP where `is_present == false`.
+  diploid-scale `int8` reference-`a1` counts with `-1` for missing calls, and
+  fails on any requested SNP where `is_present == false`.
 - `GenotypePanel.fetch_genotypes` is a double-precision wrapper over
   `fetch_genotypes_int8`, converting `-1` to `NaN` by default. Its
   `haploid_mode` argument accepts `"raw"` and `"ploidy_scaled"`; the latter
