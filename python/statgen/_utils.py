@@ -7,7 +7,9 @@ CHR_RANK = {c: i for i, c in enumerate(CANONICAL_CHR_ORDER)}
 _ALLELE_HASH_P = 2_147_483_647
 _ALLELE_HASH_BASE1 = 257
 _ALLELE_HASH_BASE2 = 263
-_ALLELE_HASH_MAX_CHARS = 150
+_ALLELE_HASH_MAX_CHARS = 1_000_000
+# Includes flat bytes, int64 powers/products/indices and reduction buffers.
+_ALLELE_HASH_BATCH_BYTES = 262_144
 _SINGLE_BASE_BYTES = np.frombuffer(b"ACGT", dtype=np.uint8).astype(np.int64) + 1
 _SINGLE_BASE_HASH64 = (
     (
@@ -46,74 +48,90 @@ def validate_requested_shards(shards, available_labels, where: str) -> list[str]
     return requested
 
 
+def _warn_allele_cap(a1, a2, path, rows):
+    """Source-boundary diagnostic; helpers deliberately remain silent."""
+    lengths = (a1.str.len().to_numpy(), a2.str.len().to_numpy())
+    affected = tuple(lens > _ALLELE_HASH_MAX_CHARS for lens in lengths)
+    count = sum(np.count_nonzero(mask) for mask in affected)
+    if count:
+        first = min((int(np.flatnonzero(mask)[0]), col)
+                    for col, mask in enumerate(affected) if mask.any())
+        i, col = first
+        warnings.warn(
+            f"{path}: {count} allele(s) exceed hash cap {_ALLELE_HASH_MAX_CHARS}; "
+            f"first affected row {rows[i]}, column a{col + 1}, length {lengths[col][i]}; "
+            f"hashing uses first {_ALLELE_HASH_MAX_CHARS} bases",
+            RuntimeWarning, stacklevel=2,
+        )
+
+
+def _allele_hash_powers(base, length):
+    powers = np.empty(length + 1, dtype=np.int64)
+    powers[0] = 1
+    used = 1
+    factor = base
+    # PERF: double the initialized prefix with native integer operations.
+    # Products of residues are below (2^31 - 1)^2 < 2^62.
+    while used < powers.size:
+        count = min(used, powers.size - used)
+        powers[used:used + count] = powers[:count] * factor % _ALLELE_HASH_P
+        factor = factor * factor % _ALLELE_HASH_P
+        used += count
+    return powers
+
+
 def allele_hash64(alleles) -> np.ndarray:
     arr = np.asarray(alleles, dtype=object).reshape(-1)
-    n = arr.size
-    if n == 0:
-        return np.array([], dtype=np.uint64)
+    if not arr.size:
+        return np.empty(0, dtype=np.uint64)
+    # Preserve lazy pandas loading for LD/cache-only workflows.
+    import pandas as pd
 
-    strings = [str(allele) for allele in arr]
-    lengths = np.fromiter((len(s) for s in strings), dtype=np.int64, count=n)
-    if np.any(lengths > _ALLELE_HASH_MAX_CHARS):
-        warnings.warn(
-            "Allele length exceeds 150 characters; hashing uses first 150 characters",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        strings = [s[:_ALLELE_HASH_MAX_CHARS] for s in strings]
-        lengths = np.minimum(lengths, _ALLELE_HASH_MAX_CHARS)
-
-    out = np.empty(n, dtype=np.uint64)
-    single_base = lengths == 1
-    if np.any(single_base):
-        single_idx = np.flatnonzero(single_base)
-        single_strings = np.array([strings[i] for i in single_idx], dtype=object)
-        assigned = np.zeros(single_idx.size, dtype=bool)
-        for base, hash_value in zip(("A", "C", "G", "T"), _SINGLE_BASE_HASH64):
-            matches = single_strings == base
-            if np.any(matches):
-                out[single_idx[matches]] = hash_value
-                assigned[matches] = True
-
-        if np.any(~assigned):
-            other_idx = single_idx[~assigned]
-            encoded = [strings[i].encode("utf-8") for i in other_idx]
-            h1, h2 = _allele_hash_lanes_from_utf8(encoded)
-            out[other_idx] = (
-                h1.astype(np.uint64) << np.uint64(32)
-            ) + h2.astype(np.uint64)
-
-    if np.all(single_base):
+    strings = pd.Series(arr, copy=False)
+    mapped = strings.map(dict(zip(("A", "C", "G", "T"), _SINGLE_BASE_HASH64)))
+    idx = np.flatnonzero(mapped.isna().to_numpy())
+    # Single-base hashes are below 2^53, so map's float64 missing-value
+    # representation preserves every bit before conversion to uint64.
+    out = mapped.to_numpy(dtype=np.uint64, na_value=0)
+    if not idx.size:
         return out
-
-    multi_idx = np.flatnonzero(~single_base)
-    encoded = [strings[i].encode("utf-8") for i in multi_idx]
-    h1, h2 = _allele_hash_lanes_from_utf8(encoded)
-    out[multi_idx] = (h1.astype(np.uint64) << np.uint64(32)) + h2.astype(np.uint64)
+    strings = strings.iloc[idx].reset_index(drop=True)
+    lengths = strings.str.len().to_numpy(dtype=np.int64)
+    lengths = np.minimum(lengths, _ALLELE_HASH_MAX_CHARS)
+    longest = int(lengths.max(initial=0))
+    powers = [_allele_hash_powers(b, longest)
+              for b in (_ALLELE_HASH_BASE1, _ALLELE_HASH_BASE2)]
+    ends = np.cumsum(lengths, dtype=np.int64)
+    # Native linear partitioning. Grouping by end offsets bounds small batches
+    # by twice the target; larger individual alleles occupy their own batch.
+    target = max(1, _ALLELE_HASH_BATCH_BYTES // 2)
+    large = lengths > target
+    split = np.r_[True, np.diff((ends - 1) // target) != 0] | large | np.r_[False, large[:-1]]
+    batch_starts = np.flatnonzero(split)
+    batch_ends = np.r_[batch_starts[1:], idx.size]
+    # PERF: batches bound all byte expansions; isolated long alleles use blocks.
+    for start, stop in zip(batch_starts, batch_ends):
+        lens = lengths[start:stop]
+        if lens[0] > _ALLELE_HASH_BATCH_BYTES:
+            allele = strings.iat[start]
+            lanes = [int(power[lens[0]]) for power in powers]
+            for offset in range(0, int(lens[0]), _ALLELE_HASH_BATCH_BYTES):
+                piece = allele[offset:min(offset + _ALLELE_HASH_BATCH_BYTES, int(lens[0]))]
+                x = np.frombuffer(piece.encode("ascii"), dtype=np.uint8).astype(np.int64) + 1
+                positions = lens[0] - offset - 1 - np.arange(x.size)
+                for lane, power in enumerate(powers):
+                    lanes[lane] = (lanes[lane] + int(np.sum(x * power[positions], dtype=np.int64))) % _ALLELE_HASH_P
+            out[idx[start]] = np.uint64((lanes[0] << 32) + lanes[1])
+        else:
+            # Slice before encoding; valid DNA has one byte per character.
+            encoded = strings.iloc[start:stop].str.slice(0, _ALLELE_HASH_MAX_CHARS).str.encode("ascii")
+            x = np.frombuffer(b"".join(encoded), dtype=np.uint8).astype(np.int64) + 1
+            starts = np.cumsum(lens) - lens
+            positions = np.repeat(starts + lens, lens) - np.arange(x.size) - 1
+            lanes = [((np.add.reduceat(x * power[positions], starts) + power[lens])
+                      % _ALLELE_HASH_P).astype(np.uint64) for power in powers]
+            out[idx[start:stop]] = (lanes[0] << np.uint64(32)) + lanes[1]
     return out
-
-
-def _allele_hash_lanes_from_utf8(encoded) -> tuple[np.ndarray, np.ndarray]:
-    n = len(encoded)
-    byte_lengths = np.fromiter((len(b) for b in encoded), dtype=np.int64, count=n)
-    max_len = int(byte_lengths.max(initial=0))
-    mat = np.zeros((n, max_len), dtype=np.uint8)
-    if max_len:
-        flat = np.frombuffer(b"".join(encoded), dtype=np.uint8)
-        row_idx = np.repeat(np.arange(n, dtype=np.int64), byte_lengths)
-        starts = np.cumsum(byte_lengths, dtype=np.int64) - byte_lengths
-        col_idx = np.arange(flat.size, dtype=np.int64) - np.repeat(starts, byte_lengths)
-        mat[row_idx, col_idx] = flat
-
-    h1 = np.ones(n, dtype=np.int64)
-    h2 = np.ones(n, dtype=np.int64)
-    for j in range(max_len):
-        active = j < byte_lengths
-        x = mat[active, j].astype(np.int64) + 1
-        h1[active] = (h1[active] * _ALLELE_HASH_BASE1 + x) % _ALLELE_HASH_P
-        h2[active] = (h2[active] * _ALLELE_HASH_BASE2 + x) % _ALLELE_HASH_P
-
-    return h1, h2
 
 
 _A_HASH64, _C_HASH64, _G_HASH64, _T_HASH64 = _SINGLE_BASE_HASH64

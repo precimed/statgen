@@ -118,15 +118,6 @@ def test_allele_hash64_known_values():
     ]
 
 
-def test_allele_hash64_warns_and_truncates_long_alleles():
-    long = "A" * 151
-    prefix = "A" * 150
-    with pytest.warns(RuntimeWarning, match="first 150 characters"):
-        long_hash = allele_hash64([long])
-    prefix_hash = allele_hash64([prefix])
-    assert long_hash[0] == prefix_hash[0]
-
-
 def test_load_sumstats_duplicate_matching_key_fails(tmp_path):
     path = tmp_path / "duplicate_key.tsv.gz"
     _write_gz_tsv(
@@ -497,21 +488,6 @@ def test_octave_allele_hash64_matches_python():
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines() == expected
-
-
-@pytest.mark.octave
-@skipif_no_octave
-def test_octave_allele_hash64_warns_and_truncates_long_alleles():
-    expected = f"{int(allele_hash64(['A' * 150])[0]):016X}"
-    script = _octave_script(
-        "warning('off', 'statgen:allele_hash'); "
-        "h = statgen.internal.allele_hash64({repmat('A', 1, 151)}); "
-        "fprintf('%s\\n', dec2hex(h(1), 16)); "
-        "warning('on', 'statgen:allele_hash');"
-    )
-    result = run_octave(script)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == expected
 
 
 @pytest.mark.octave

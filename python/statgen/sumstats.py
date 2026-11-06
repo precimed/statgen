@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from pandas.errors import EmptyDataError, ParserError
 
-from ._utils import CANONICAL_CHR_ORDER, _validate_allow_indel_swaps, allele_hash64, validate_requested_shards
+from ._utils import CANONICAL_CHR_ORDER, _validate_allow_indel_swaps, allele_hash64, validate_requested_shards, _warn_allele_cap
 from ._verbosity import info, report_variant_swaps
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
@@ -114,6 +114,10 @@ def _parse_sumstats(path: Path) -> pd.DataFrame:
             f"{path}: row {idx + 2}: unsupported chr label {chr_col.iat[idx]!r}; expected 1-22, X (Y/MT are ignored)"
         )
     out = out.loc[chr_col.isin(CANONICAL_CHR_ORDER)].copy()
+
+    _warn_allele_cap(
+        out["a1"], out["a2"], path, out.index.to_numpy() + 2
+    )
 
     bad_a1_syntax = ~out["a1"].str.fullmatch(_DNA_ALLELE_RE.pattern)
     if bad_a1_syntax.any():

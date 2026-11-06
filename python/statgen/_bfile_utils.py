@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from pandas.errors import EmptyDataError, ParserError, ParserWarning
 
-from ._utils import CANONICAL_CHR_ORDER, CHR_RANK, allele_hash64
+from ._utils import CANONICAL_CHR_ORDER, CHR_RANK, allele_hash64, _warn_allele_cap
 from ._variant_match import check_unique_sorted_variant_keys, numeric_variant_keys
 
 IGNORED_CHR = {"Y", "MT"}
@@ -119,6 +119,10 @@ def _parse_bim(path: Path) -> pd.DataFrame:
         raise ValueError(
             f"{path}:{idx + 1}: unsupported chr label {chr_col.iat[idx]!r}; expected 1-22, X (Y/MT are ignored)"
         )
+
+    _warn_allele_cap(
+        df["a1"], df["a2"], path, df.index.to_numpy() + 1
+    )
 
     bad_allele = df["a1"].eq("") | df["a2"].eq("")
     if bad_allele.any():

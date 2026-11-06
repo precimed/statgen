@@ -21,8 +21,9 @@ function bim = bfile_parse_bim(path)
     canonical = statgen.internal.canonical_labels();
     statgen.internal.validate_variant_chr_labels(bim.chr, path, 0, 'statgen:bim');
 
-    [bad_a1, a1_lens] = statgen.internal.invalid_dna_allele(bim.a1);
-    [bad_a2, a2_lens] = statgen.internal.invalid_dna_allele(bim.a2);
+    [a1_lens, a2_lens] = statgen.internal.warn_allele_cap(bim.a1, bim.a2, path, (1:n_rows)');
+    [bad_a1, a1_lens] = statgen.internal.invalid_dna_allele(bim.a1, a1_lens);
+    [bad_a2, a2_lens] = statgen.internal.invalid_dna_allele(bim.a2, a2_lens);
 
     bad_allele = (a1_lens == 0) | (a2_lens == 0);
     if any(bad_allele)

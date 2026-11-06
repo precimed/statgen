@@ -14,6 +14,10 @@ public cache save/load APIs.
 
 ## Normative requirements
 
+Allele validation and hash generation follow the consolidated requirements in
+[allele-handling.md](allele-handling.md), including its bounded-processing
+exceptions to the SNP-axis loop restrictions below.
+
 - Cache reads and writes MUST preserve the logical object contract defined in
   object specs.
 - Cache validity MUST be tied to compatibility checks (schema version and

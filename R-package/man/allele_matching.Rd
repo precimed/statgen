@@ -83,6 +83,19 @@ superseded by exact matches are not reported.
 Use \code{set_verbosity("quiet")} to hide progress messages and loading
 summaries. Warnings remain visible.
 }
+\section{Long alleles and historical reference caches}{
+Source loaders validate and preserve complete uppercase DNA sequences. Matching
+hashes use the first 1,000,000 bases of each allele. Longer alleles produce one
+warning per input file. Matching and hash-key duplicate checks cannot distinguish
+alleles that share this prefix but differ afterwards.
+
+Older reference caches, including those inside older LD distributions, may use
+only the first 150 bases. They may fail to match alleles longer than 150 bases
+in newly loaded sources, despite unchanged reference checksums. Cache loading
+retains stored hashes and mappings. Rebuild the reference or its cache from
+canonical sources to use the new hashes. When rebuilding an LD distribution's
+reference cache, preserve reference row order and allele orientation.
+}
 \section{Genotype caches and BED overrides}{
 New genotype caches use \code{genotype_cache/0.2} and preserve swap information.
 Historical \code{/0.1} caches remain readable with their original mappings

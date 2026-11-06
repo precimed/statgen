@@ -73,8 +73,9 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
     p_num = p_num(keep_chr);
     source_line = source_line(keep_chr);
 
-    [bad_a1_syntax, a1_lens] = statgen.internal.invalid_dna_allele(a1_col);
-    [bad_a2_syntax, a2_lens] = statgen.internal.invalid_dna_allele(a2_col);
+    [a1_lens, a2_lens] = statgen.internal.warn_allele_cap(a1_col, a2_col, path, source_line);
+    [bad_a1_syntax, a1_lens] = statgen.internal.invalid_dna_allele(a1_col, a1_lens);
+    [bad_a2_syntax, a2_lens] = statgen.internal.invalid_dna_allele(a2_col, a2_lens);
 
     bad_a1 = a1_lens == 0;
     if any(bad_a1), error('statgen:sumstats', '%s: row %d: a1 must be non-empty', path, source_line(find(bad_a1, 1, 'first'))); end
