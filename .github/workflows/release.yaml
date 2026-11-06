@@ -101,6 +101,9 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: rocker/r-ver:4.6.1
+    env:
+      # CRAN incoming checks require metadata absent from Rocker's binary mirror.
+      CRAN: https://cloud.r-project.org
     defaults:
       run:
         shell: bash
@@ -109,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git lsb-release make qpdf tidy ghostscript sudo unzip
+          apt-get install -y --no-install-recommends ca-certificates curl git lsb-release make qpdf tidy ghostscript sudo unzip xz-utils
 
       - name: Check out repository
         uses: actions/checkout@v4
