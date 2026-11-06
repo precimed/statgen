@@ -37,7 +37,8 @@ In separate files:
 Objects:
 
 1. [reference.md](reference.md): `ReferenceShard` / `ReferencePanel` —
-   SNP tables close to PLINK BIM files.
+   variant lists with genomic REF/ALT semantics, as in sites-only `.vcf` or
+   PLINK 2 `.pvar`; currently loaded from PLINK 1 `.bim` only.
 1. [genotype.md](genotype.md): `GenotypeShard` / `GenotypePanel` —
    reference-aligned PLINK bfile-backed genotype access objects.
 1. [ld.md](ld.md): `LDShard` / `LDPanel` —
@@ -79,33 +80,53 @@ API notation uses neutral data-shape terms:
 `statgen` starts after variant harmonization. Variant-bearing inputs are
 expected to have already passed through [`genomatch`](https://github.com/precimed/genomatch)
 or an equivalent upstream pipeline so they share one genome build,
-contig naming for chromosome labels, and the `a1=non-reference`, `a2=reference`
-allele contract. `statgen` uses these inputs as-is. It does not normalize
-chromosome labels, swap alleles, infer reference alleles, liftover coordinates,
-or repair strand issues.
+contig naming for chromosome labels, and strand. `statgen` does not normalize
+chromosome labels, determine or verify REF alleles against a reference-genome
+FASTA sequence, liftover coordinates, or repair strand issues. Sumstats and genotype source loaders accept allele
+swaps under the matching contract in [reference.md](reference.md).
 
 Within the current contract, supported contigs are `1`-`22` and `X`.
 `statgen` currently does not depend on inputs to be in a specific reference genome,
 but it's recommended to provide inputs in `GRCh38`.
 
-Input variant records use `a1` as the non-reference allele and `a2` as the
-reference allele (i.e. match reference fasta sequence).
-Both are non-empty strings of uppercase DNA bases (`A`, `C`,
+A `ReferencePanel` is a user-supplied variant table defining genomic REF/ALT
+identity and the output allele orientation. Allele roles depend on the input:
+
+For reference input in `.vcf` or `.pvar` format (not yet implemented), `REF`
+is expected to match the reference genome sequence, and `ALT` represents the
+alternative allele. For reference `.bim` input, column 5 (`a1`) represents ALT,
+and column 6 (`a2`) represents REF and is expected to match the reference genome
+sequence.
+
+For genotype `.bim` input, column 5 (`a1`) is the counted allele, and column 6
+(`a2`) is the non-counted allele. Preferably, the counted allele matches the
+reference panel's ALT, and the non-counted allele matches its REF.
+
+For sumstats, `a1` / `EffectAllele` is the effect allele, and
+`a2` / `OtherAllele` is the other allele. Preferably, the effect allele matches
+the reference panel's ALT, and the other allele matches its REF.
+
+For alleles in genotype or sumstats that are reversed relative to the reference,
+loaders orient values using the shared
+[matching policy](reference.md#source-to-reference-matching), under the
+same-strand assumption. For indels, reversing allele roles can change the
+insertion/deletion interpretation. Users who set `allow_indel_swaps=true` on
+`load_genotype` or `load_sumstats` take responsibility for interpreting reversed
+indel alleles as the same biological variant.
+
+Users establish genome build, strand, and reference alignment upstream.
+`statgen` neither requires nor reads a reference FASTA to verify REF identity.
+Both alleles are non-empty strings of uppercase DNA bases (`A`, `C`,
 `T`, `G`); either may be multi-base for indels. Loaders validate allele syntax
-and preserve values as-is without normalization or case conversion. They do not
-validate whether either allele matches the reference genome sequence at that
-position. Allele syntax validation is independent of supported-contig
-projection: every variant row retained in the source table used by a loader
-must satisfy this allele contract, including recognized non-supported contigs
-such as `Y` and `MT`. An implementation that drops `Y`/`MT` rows before
-constructing the source table used for allele validation is not required to
-validate alleles on those dropped rows.
+and preserve values as-is without normalization or case conversion.
+Alleles on supported contigs must satisfy this syntax contract. Validation
+of alleles on ignored contigs such as `Y` and `MT` is implementation-dependent;
+loaders need not add special handling for these rows.
 
-Signed quantities must already be oriented to `a1`:
-
-- GWAS signed effects and Z scores must be oriented to `a1`;
-- genotype dosage/count data must count `a1`;
-- LD correlations must be signed with respect to `a1` dosages.
+Source signed effects, Z scores, and EAF refer to the source effect allele
+(`EffectAllele`); source genotype counts count source `a1`. Aligned effects, EAF, and
+genotype counts refer to reference ALT (`a1`). LD correlations are signed with
+respect to reference ALT dosages.
 
 ## Alignment and indexing
 
@@ -216,7 +237,9 @@ user-space code that operates on plain arrays extracted from these objects.
 `get_verbosity()`.
 
 `load_ld` consults this setting: at `info` it reports progress while loading
-individual shards, and at `quiet` it suppresses that reporting.
+individual shards, and at `quiet` it suppresses that reporting. Sumstats and
+genotype source loaders also use verbosity for reporting swap counts as
+specified in [reference.md](reference.md#source-to-reference-matching).
 
 ## Optional collection manifests
 

@@ -19,7 +19,10 @@ public cache save/load APIs.
 - Cache validity MUST be tied to compatibility checks (schema version and
   reference checksums where applicable).
 - A cache hit MUST be observationally equivalent to loading from canonical
-  source inputs, up to documented numeric tolerance.
+  source inputs, up to documented numeric tolerance. Legacy caches preserve
+  the values, mappings, and missingness stored by their writer, subject to
+  schema migrations defined in object specs; they need not reproduce additional
+  matches available when reloading sources with a newer implementation.
 - Cache formats MAY be language-specific and are not required to be portable
   across Python, MATLAB/Octave, and R. Cross-language cache sharing is
   explicitly a non-goal: a cache written by one runtime is not required to be

@@ -3,7 +3,7 @@
 ## Represents
 
 GWAS summary statistics for one trait or source: p-values, optional Z scores,
-sample sizes, effect estimates, and quality fields, all oriented to `a1` under
+sample sizes, effect estimates, and quality fields, aligned to reference `a1` under
 the allele contract in [SPEC.md](SPEC.md). Multiple traits are independent
 objects that may share the same reference panel. A future multi-trait container
 should use a different name, such as `SumstatsCollection`.
@@ -28,7 +28,9 @@ Required columns:
 - `a2` or `OtherAllele`
 - `p` or `P`
 
-Allele-column contract follows [SPEC.md](SPEC.md).
+Allele roles follow [SPEC.md](SPEC.md). An explicit genomic `REF` column is
+not currently supported for allele interpretation or matching; source orientation is
+determined by the effect and other allele columns.
 
 `p` is required and must be present for every source row. `p == 0` is allowed;
 `p < 0`, `p > 1`, non-numeric, `NaN`, infinite, and missing `p` values are
@@ -83,14 +85,10 @@ behavior.
 
 The TSV does not have to contain every variant in the reference panel.
 `load_sumstats` is a reference-driven projection from a possibly larger source.
-Loading against a `ReferencePanel` projects rows into reference order by taking
-validated source rows whose `chr` label is in the supplied reference shard set,
-then matching within that shard on the tuple `(bp, a1_hash64, a2_hash64)`
-defined by the shared source-to-reference matching contract in
-[reference.md](reference.md), including swapped-allele diagnostics for
-unmatched source rows. Validated source rows outside the supplied reference
-shard set are ignored for alignment only when they are canonical contigs that
-were not selected in the supplied reference, such as `X` rows loaded against a
+Loading against a `ReferencePanel` projects rows into reference order under
+[the shared matching contract](reference.md#source-to-reference-matching).
+Validated source rows on canonical contigs outside the supplied reference
+shard set are ignored for alignment, such as `X` rows loaded against a
 chr1-only reference. Recognized non-supported contigs, invalid contig labels,
 and allele syntax follow the shared rules in
 [contigs-and-shards.md](contigs-and-shards.md) and [SPEC.md](SPEC.md). The
@@ -100,6 +98,13 @@ reference shard has no matching source rows at all, the loader warns and
 represents that shard as all missing. The loader does not normalize or alias
 contig labels; matched sumstats `chr` values must already match the reference
 labels.
+
+For a swapped match, negate source `z` and `beta`, and replace source `eaf`
+with `1 - eaf`. Leave `p`, `n`, `se`, and `info` unchanged. Preserve missing
+optional values and absent optional fields. Exact matches are unchanged.
+`create_sumstats` accepts already reference-oriented vectors and does not
+perform matching or swaps. Sumstats objects store aligned values without a
+per-variant swap mask.
 
 ## In-memory objects
 
@@ -119,10 +124,10 @@ Each `SumstatsShard` contains:
 - `is_present`: derived logical vector, length `num_snp`, equal to
   `~isnan(logpvec)`;
 - `beta_vec`: optional float vector, length `num_snp`, containing effect sizes
-  oriented to `a1`;
+  oriented to reference `a1`;
 - `se_vec`: optional float vector, length `num_snp`, containing standard errors;
-- `eaf_vec`: optional float vector, length `num_snp`, containing effect allele
-  frequency for `a1` where available;
+- `eaf_vec`: optional float vector, length `num_snp`, containing the frequency
+  of reference `a1` (ALT) where available;
 - `info_vec`: optional float vector, length `num_snp`, containing imputation or
   variant-quality information where available.
 
@@ -211,7 +216,7 @@ defined in [SPEC.md](SPEC.md).
 ## API
 
 ```text
-load_sumstats(path, reference) -> Sumstats
+load_sumstats(path, reference, optional allow_indel_swaps=false) -> Sumstats
 save_sumstats_cache(sumstats, path)
 load_sumstats_cache(path, optional shards) -> Sumstats
 create_sumstats(reference, p, optional z, optional n, optional beta,
@@ -239,9 +244,8 @@ Expected behavior:
   internal field names plus `POS`, `EffectAllele`, and `OtherAllele` from the
   genomatch cleaned-sumstats schema.
 - sumstats-to-reference matching follows the shared source-to-reference
-  matching contract in [reference.md](reference.md). Joins are exact after
-  basic field parsing; the loader does not normalize chromosome labels, swap
-  alleles, or perform strand handling.
+  matching contract in [reference.md](reference.md#source-to-reference-matching).
+  The loader does not normalize chromosome labels or perform strand handling.
 - required numeric field `p` must parse as a finite numeric value in the closed
   interval `[0, 1]` for every source row; non-numeric, `NaN`, infinite, missing,
   negative, or greater-than-one values are validation errors and must fail load
