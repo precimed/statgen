@@ -21,18 +21,20 @@ function out = allele_hash64(alleles, workspace_bytes)
     idx = find(lens ~= 1 | single);
     if isempty(idx), return; end
     longest = max(lens(idx));
-    powers = ones(longest + 1, 2);
-    % PERF: exact small-base recurrence over power positions, once per call.
-    for j = 1:longest
-        powers(j + 1, :) = mod(powers(j, :) .* bases, p);
-    end
-    % Gather from contiguous vectors rather than repeatedly indexing a column
-    % of the two-lane matrix for every byte in each batch.
-    power1 = powers(:, 1);
-    power2 = powers(:, 2);
-    clear powers;
     % Each reduction has at most 8192 terms, keeping double sums exact.
     block_chars = min(8192, max(1, floor(workspace_bytes / 64)));
+    short_limit = min(150, block_chars);
+    if longest > short_limit
+        powers = ones(longest + 1, 2);
+        % PERF: exact small-base recurrence over power positions, once per call.
+        for j = 1:longest
+            powers(j + 1, :) = mod(powers(j, :) .* bases, p);
+        end
+        % Gather from contiguous vectors rather than indexing a matrix column.
+        power1 = powers(:, 1);
+        power2 = powers(:, 2);
+        clear powers;
+    end
     % PERF: bucket dispatch and bounded batches replace whole-vector scans.
     for k = 0:floor(log2(max(1, longest)))
         upper = 2^(k + 1) - 1;
@@ -43,6 +45,20 @@ function out = allele_hash64(alleles, workspace_bytes)
             lengths = lens(rows);
             width = max(lengths);
             batch = alleles(rows);
+            if width <= short_limit
+                % The original recurrence avoids weight/position matrices for
+                % short alleles, with padding still bounded by batch capacity.
+                chars = uint8(char(batch));
+                h = ones(numel(rows), 2);
+                for j = 1:width
+                    active = j <= lengths;
+                    x = double(chars(active, j)) + 1;
+                    h(active, 1) = mod(h(active, 1) .* bases(1) + x, p);
+                    h(active, 2) = mod(h(active, 2) .* bases(2) + x, p);
+                end
+                out(rows) = bitshift(uint64(h(:, 1)), 32) + uint64(h(:, 2));
+                continue;
+            end
             % Long alleles are sliced directly into capped byte blocks below;
             % avoid copying a complete million-base prefix for every batch row.
             h = [power1(lengths + 1), power2(lengths + 1)];
