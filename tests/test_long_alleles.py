@@ -126,6 +126,8 @@ def test_octave_shared_vectors_legacy_and_silent_helpers(tmp_path):
     result = run_octave(
         f"fid=fopen('{alleles}'); a=textscan(fid,'%s'); fclose(fid); lastwarn(''); "
         "h=statgen.internal.allele_hash64(a{1}); [msg, id]=lastwarn(); assert(isempty(msg)); "
+        "short=find(cellfun('length',a{1})==150); "
+        "assert(isequal(statgen.internal.allele_hash64(a{1}(short)),h(short))); "
         f"fid=fopen('{output}','w'); fprintf(fid,'%u\\n',h); fclose(fid); "
         f"old=statgen.load_reference_cache('{ROOT / 'legacy_matlab.mat'}'); "
         f"new=statgen.load_reference('{ROOT / 'legacy.bim'}'); "
