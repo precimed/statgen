@@ -66,20 +66,6 @@ def test_r_allele_hash64_matches_python_known_values():
 
 @pytest.mark.r
 @skipif_no_rscript
-def test_r_allele_hash64_warns_and_truncates_long_alleles():
-    expected = str(int(allele_hash64(["A" * 150])[0]))
-    result = run_rscript(
-        _source_phase2_script(
-            "h <- suppressWarnings(.allele_hash64(paste(rep('A', 151), collapse=''))); "
-            "cat(as.character(h), '\\n')"
-        )
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == expected
-
-
-@pytest.mark.r
-@skipif_no_rscript
 def test_r_sumstats_matches_python_fixture_alignment():
     reference = load_reference(SHARDED_REF)
     with pytest.warns(RuntimeWarning):

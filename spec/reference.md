@@ -78,12 +78,13 @@ label, and base-pair position is already stored as a numeric vector, so only the
 variable-length allele strings need compact hashed representations.
 
 `a1_hash64` and `a2_hash64` are `uint64` vectors, length `num_snp`, computed
-from allele strings as loaded. If any allele exceeds 150 characters,
-implementations must warn and compute the hash from only the first 150
-characters. Hash inputs are assumed to be allele strings that already satisfy
+from allele strings as loaded, using a capped prefix. The cap, warning policy,
+cross-runtime implementation requirements, and rationale are specified in
+[allele-handling.md](allele-handling.md).
+Hash inputs are assumed to be allele strings that already satisfy
 the source allele contract in [SPEC.md](SPEC.md). The hash algorithm is a
 deterministic two-lane polynomial hash over the UTF-8 bytes of the allele
-string prefix, chosen so all intermediate
+prefix, chosen so all intermediate
 arithmetic is exactly representable in MATLAB/Octave `double` without relying
 on unsigned integer overflow:
 
@@ -93,7 +94,7 @@ base1 = 257
 base2 = 263
 h1 = 1
 h2 = 1
-for byte in allele_utf8_bytes(first_150_characters(allele)):
+for byte in allele_utf8_bytes(hash_prefix(allele)):
     x = double(byte) + 1
     h1 = mod(h1 * base1 + x, p)
     h2 = mod(h2 * base2 + x, p)

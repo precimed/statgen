@@ -284,6 +284,7 @@ print.Sumstats <- function(x, ...) {
       stop(sprintf("%s: row %d: %s must be non-empty", path, row, field), call. = FALSE)
     }
   }
+  .warn_allele_cap(df$a1, df$a2, path, as.integer(rownames(df)) + 1L)
   bad_a1 <- !grepl("^[ACGT]+$", df$a1)
   if (any(bad_a1)) {
     idx <- which(bad_a1)[[1]]

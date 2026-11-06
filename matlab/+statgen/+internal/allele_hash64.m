@@ -1,80 +1,64 @@
-function out = allele_hash64(alleles)
-%ALLELE_HASH64 Deterministic allele hash defined by spec/reference.md.
+function out = allele_hash64(alleles, workspace_bytes)
+%ALLELE_HASH64 Exact polynomial hash; source loaders own cap warnings.
     alleles = statgen.internal.ensure_cell_col(alleles);
-    n = numel(alleles);
-    out = zeros(n, 1, 'uint64');
-    if n == 0
-        return
-    end
-
+    full_lens = cellfun('length', alleles);
+    [cap, default_workspace] = statgen.internal.allele_processing_limits();
+    if nargin < 2, workspace_bytes = default_workspace; end
+    lens = min(full_lens, cap);
+    out = zeros(numel(alleles), 1, 'uint64');
+    if isempty(alleles), return; end
     p = 2147483647;
-    base1 = 257;
-    base2 = 263;
-    max_chars = 150;
-
-    lens = cellfun('length', alleles);
-    too_long = lens > max_chars;
-    if any(too_long)
-        warning('statgen:allele_hash', ...
-            'Allele length exceeds 150 characters; hashing uses first 150 characters');
-        idx = find(too_long);
-        for k = 1:numel(idx)
-            i = idx(k);
-            alleles{i} = alleles{i}(1:max_chars);
-        end
-        lens = min(lens, max_chars);
+    bases = [257, 263];
+    single = lens == 1;
+    base_chars = {'A'; 'C'; 'G'; 'T'};
+    for k = 1:4
+        x = double(base_chars{k}) + 1;
+        h = mod(bases + x, p);
+        mask = single & strcmp(alleles, base_chars{k});
+        out(mask) = bitshift(uint64(h(1)), 32) + uint64(h(2));
+        single(mask) = false;
     end
-
-    single_base = lens == 1;
-    if any(single_base)
-        bases = {'A'; 'C'; 'G'; 'T'};
-        base_x = double(uint8(char(bases))) + 1;
-        base_x = base_x(:);
-        base_h1 = mod(base1 + base_x, p);
-        base_h2 = mod(base2 + base_x, p);
-        base_hash = bitshift(uint64(base_h1), 32) + uint64(base_h2);
-
-        single_idx = find(single_base);
-        single_alleles = alleles(single_idx);
-        assigned = false(numel(single_idx), 1);
-        for k = 1:numel(bases)
-            matches = strcmp(single_alleles, bases{k});
-            if any(matches)
-                out(single_idx(matches)) = base_hash(k);
-                assigned(matches) = true;
+    idx = find(lens ~= 1 | single);
+    if isempty(idx), return; end
+    longest = max(lens(idx));
+    powers = ones(longest + 1, 2);
+    % PERF: exact small-base recurrence over power positions, once per call.
+    for j = 1:longest
+        powers(j + 1, :) = mod(powers(j, :) .* bases, p);
+    end
+    % Each reduction has at most 8192 terms, keeping double sums exact.
+    block_chars = min(8192, max(1, floor(workspace_bytes / 64)));
+    % PERF: bucket dispatch and bounded batches replace whole-vector scans.
+    for k = 0:floor(log2(max(1, longest)))
+        upper = 2^(k + 1) - 1;
+        bucket = idx(lens(idx) >= 2^k & lens(idx) <= upper);
+        capacity = max(1, floor(workspace_bytes / (64 * min(upper, block_chars))));
+        for first = 1:capacity:numel(bucket)
+            rows = bucket(first:min(first + capacity - 1, numel(bucket)));
+            lengths = lens(rows);
+            width = max(lengths);
+            batch = alleles(rows);
+            % Long alleles are sliced directly into capped byte blocks below;
+            % avoid copying a complete million-base prefix for every batch row.
+            h = powers(lengths + 1, :);
+            for offset = 0:block_chars:width-1
+                last = min(width, offset + block_chars);
+                if offset == 0 && width <= block_chars
+                    chars = char(batch);
+                else
+                    pieces = cellfun(@(x) x(offset+1:min(numel(x), last)), batch, 'UniformOutput', false);
+                    chars = char(pieces);
+                end
+                cols = offset + (1:size(chars, 2));
+                active = bsxfun(@le, cols, lengths);
+                x = (double(uint8(chars)) + 1) .* active;
+                positions = max(0, bsxfun(@minus, lengths, cols)) + 1;
+                for lane = 1:2
+                    weights = reshape(powers(positions(:), lane), size(positions));
+                    h(:, lane) = mod(h(:, lane) + sum(x .* weights, 2), p);
+                end
             end
-        end
-        if any(~assigned)
-            other_idx = single_idx(~assigned);
-            x = double(uint8(char(alleles(other_idx)))) + 1;
-            x = x(:);
-            h1 = mod(base1 + x, p);
-            h2 = mod(base2 + x, p);
-            out(other_idx) = bitshift(uint64(h1), 32) + uint64(h2);
+            out(rows) = bitshift(uint64(h(:, 1)), 32) + uint64(h(:, 2));
         end
     end
-    if all(single_base)
-        return
-    end
-
-    multi_idx = find(~single_base);
-    multi_alleles = alleles(multi_idx);
-    multi_lens = lens(multi_idx);
-
-    mat = uint8(char(multi_alleles));
-    L = size(mat, 2);
-    cols = 1:L;
-    pad = bsxfun(@gt, cols, multi_lens);
-    mat(pad) = uint8(0);
-
-    h1 = ones(numel(multi_idx), 1);
-    h2 = ones(numel(multi_idx), 1);
-    for j = 1:L
-        active = j <= multi_lens;
-        x = double(mat(active, j)) + 1;
-        h1(active) = mod(h1(active) .* base1 + x, p);
-        h2(active) = mod(h2(active) .* base2 + x, p);
-    end
-
-    out(multi_idx) = bitshift(uint64(h1), 32) + uint64(h2);
 end

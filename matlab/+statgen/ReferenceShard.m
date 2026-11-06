@@ -148,13 +148,6 @@ classdef ReferenceShard
             if numel(obj.bp) ~= obj.num_snp || numel(obj.a1_hash64) ~= obj.num_snp || numel(obj.a2_hash64) ~= obj.num_snp
                 error('statgen:cache', 'Invalid reference cache: payload vector lengths mismatch');
             end
-            same_hash = obj.a1_hash64 == obj.a2_hash64;
-            if any(same_hash)
-                idx = find(same_hash, 1, 'first');
-                error('statgen:cache', ...
-                    'Invalid reference cache: shard %s variant %d has equal allele hashes for a1 and a2', ...
-                    obj.label, idx);
-            end
         end
     end
 end

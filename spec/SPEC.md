@@ -28,6 +28,8 @@ In separate files:
    row-order contract, shard discovery, and shard subsetting rules.
 1. [performance-contract.md](performance-contract.md): cache purpose and
    performance-oriented storage requirements.
+1. [allele-handling.md](allele-handling.md): long-allele validation, hash limits,
+   and exact hash generation across runtimes, with design rationale.
 1. [python.md](python.md): Python package layout and implementation conventions.
 1. [matlab.md](matlab.md): MATLAB/Octave package layout and implementation conventions.
 1. [R.md](R.md): R package layout, CRAN constraints, and implementation conventions.

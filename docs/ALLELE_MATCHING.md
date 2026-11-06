@@ -89,6 +89,21 @@ are not reported. Use
 `set_verbosity("quiet")` to hide progress messages and loading summaries;
 warnings remain visible. MATLAB uses `statgen.set_verbosity('quiet')`.
 
+## Long alleles and historical reference caches
+
+Source loaders validate and preserve complete uppercase DNA sequences. Matching
+hashes use the first 1,000,000 bases of each allele. Longer alleles produce one
+warning per input file; alleles sharing this prefix cannot be distinguished by
+matching or hash-key duplicate checks, even if their suffixes differ.
+
+Older reference caches, including those inside older LD distributions, may use
+only the first 150 bases. They may fail to match alleles longer than 150 bases
+in newly loaded sources, even though the reference checksum is unchanged.
+Cache loading retains stored hashes and mappings. Rebuild the reference or its
+cache from canonical sources to use the new hashes. For an LD distribution,
+keep its reference row order and allele orientation when rebuilding its
+reference cache.
+
 ## Genotype caches and BED overrides
 
 New genotype caches use `genotype_cache/0.2` and retain swap flags. Existing

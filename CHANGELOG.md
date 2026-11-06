@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Long alleles, such as structural variant sequences, are now matched on up to
+  their first 1,000,000 bases instead of their first 150 (Python, MATLAB/Octave,
+  and R). Loaders warn once per file if any allele is longer than that.
+- Reference caches written by earlier versions, including those inside existing
+  LD distributions, may fail to match alleles longer than 150 bases. Reference
+  checksums do not detect this. Rebuild the cache from its source files to fix it.
+  Alleles of 150 bases or fewer are unaffected.
+
 ## [0.4.0] - 2026-11-06
 
 ### Added

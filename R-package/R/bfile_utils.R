@@ -34,6 +34,7 @@
     idx <- which(!known_chr)[[1]]
     stop(sprintf("%s:%d: unsupported chr label %s; expected 1-22, X (Y/MT are ignored)", path, idx, sQuote(df$chr[[idx]])), call. = FALSE)
   }
+  .warn_allele_cap(df$a1, df$a2, path, seq_len(nrow(df)))
   bad_allele <- is.na(df$a1) | is.na(df$a2) | df$a1 == "" | df$a2 == ""
   if (any(bad_allele)) {
     stop(sprintf("%s:%d: a1 and a2 must be non-empty", path, which(bad_allele)[[1]]), call. = FALSE)
