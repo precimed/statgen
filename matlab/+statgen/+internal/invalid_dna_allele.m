@@ -8,8 +8,16 @@ function [bad, lens] = invalid_dna_allele(alleles, lens, workspace_bytes)
     if nargin < 3, workspace_bytes = default_workspace; end
     % Conservative allowance for char, masks, positions and numeric temporaries.
     max_chars = max(1, floor(workspace_bytes / 32));
+    % Single-base validation needs neither padding masks nor a result merge.
+    single_idx = find(lens == 1);
+    for first = 1:max_chars:numel(single_idx)
+        rows = single_idx(first:min(first + max_chars - 1, numel(single_idx)));
+        chars = char(alleles(rows));
+        bad(rows) = chars ~= 'A' & chars ~= 'C' & chars ~= 'G' & chars ~= 'T';
+    end
+    if numel(single_idx) == numel(alleles), return; end
     % PERF: geometrical buckets keep padded work linear in sequence volume.
-    for k = 0:floor(log2(max([1; lens(:)])))
+    for k = 1:floor(log2(max([1; lens(:)])))
         upper = 2^(k + 1) - 1;
         idx = find(lens >= 2^k & lens <= upper);
         capacity = max(1, floor(max_chars / upper));
