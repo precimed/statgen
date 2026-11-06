@@ -123,13 +123,16 @@ pruned_genotypes = genotype.fetch_genotypes(pruned_snp_indices)
 
 print(pruned_snp_indices.shape)
 print(pruned_genotypes.shape)
+print(genotype.is_allele_swapped[pruned_snp_indices])
 ```
 
 `pruned_snp_indices` are zero-based reference-coordinate indices in Python.
 `pruned_genotypes` has samples as rows and requested SNPs as columns.
-`fetch_genotypes` returns raw PLINK-decoded calls by default; pass
-`haploid_mode="ploidy_scaled"` when haploid calls should be mapped onto declared
-biological ploidy.
+Calls use the raw diploid scale by default; pass
+`haploid_mode="ploidy_scaled"` to adjust for biological ploidy.
+
+Counts, Z, beta, and EAF describe the reference panel's `a1` (ALT) allele;
+see the [allele matching guide](ALLELE_MATCHING.md).
 
 When using a genotype metadata cache, the original BED files must still be
 available. If they moved, pass a replacement `bed_path` to `fetch_genotypes`.

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Python, MATLAB/Octave, and R source loaders automatically match reversed
+  SNVs, including A/T and C/G under the same-strand assumption. Both loaders
+  accept `allow_indel_swaps` to also match reversed indels with exactly one
+  single-base allele; pairs with two multi-base alleles remain exact-only.
+- Genotype panels expose `is_allele_swapped` on the full reference SNP axis.
+  Genotype fetching via `fetch_genotypes_int8` and `fetch_genotypes` orients
+  hardcalls to the reference panel's `a1` (ALT) allele before ploidy scaling.
+
+### Changed
+- When source alleles are reversed, Z scores and beta change sign and EAF
+  becomes `1 - EAF`, so they describe the reference panel's `a1` (ALT) allele.
+  Other statistics and missing values are preserved.
+- `load_reference` now rejects repeated variants and SNPs listed with both
+  allele orders, such as A/G and G/A at the same position.
+- Genotype caches now use `genotype_cache/0.2` to record allele swaps.
+
 ### Fixed
 - R variant matching now sorts allele hashes at or above
   `0x7FF0000000000000` correctly. Previously, two such alleles at one position

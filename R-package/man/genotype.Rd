@@ -51,8 +51,8 @@ fetch_genotypes(x, snp_indices, bed_path = NULL,
 \item{bfile_prefix}{Character scalar PLINK bfile prefix, without suffixes.
 Use \code{@} as a shard-label placeholder for sharded input.}
 \item{reference}{A \code{ReferencePanel}.}
-\item{allow_indel_swaps}{Logical scalar enabling swaps for allele pairs with
-one single-base and one longer allele. SNV swaps are always enabled.}
+\item{allow_indel_swaps}{Logical scalar enabling indel swaps. Default is
+\code{FALSE}; see \link{allele_matching}.}
 \item{panel, x}{A \code{GenotypePanel}.}
 \item{path}{Character scalar path to an RDS genotype metadata cache.}
 \item{shards}{Optional character vector of shard labels in canonical order.}
@@ -74,13 +74,13 @@ and requested SNPs as columns, counting reference \code{a1} and using
 \code{NaN}.
 }
 \details{
-Genotype panels are reference-aligned metadata handles for PLINK BED payloads.
-Hardcalls are decoded on demand; caches store only metadata needed to locate
-and map BED rows. Exact matches take priority over allele swaps.
-\code{is_allele_swapped()} returns a logical vector on the full reference axis;
-exact matches and absent variants are false. Swapped nonmissing calls are
-flipped before ploidy scaling.
+Genotype panels read hardcalls from BED files on demand. Loading prefers exact
+matches, swaps SNVs automatically, and uses \code{allow_indel_swaps} for indels;
+counts describe the reference panel's \code{a1} (ALT) allele.
+\code{is_allele_swapped()} returns a logical vector marking variants matched
+by a swap, with false for exact matches and absent variants.
 }
+\seealso{\link{allele_matching}, \code{load_reference}, \code{load_sumstats}, \code{set_verbosity}}
 \examples{
 ref_path <- system.file("extdata", "reference_chr1.bim", package = "statgen")
 geno_bed <- system.file("extdata", "genotype_1.bed", package = "statgen")
@@ -90,6 +90,7 @@ g <- load_genotype(geno_prefix, ref)
 geno <- fetch_genotypes(g, c(1, 2))
 dim(geno)
 head(geno)
+head(is_allele_swapped(g))
 
 cache <- tempfile(fileext = ".rds")
 save_genotype_cache(g, cache)

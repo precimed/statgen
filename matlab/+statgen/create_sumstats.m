@@ -7,7 +7,8 @@ function sumstats = create_sumstats(reference, p, z, n, beta, se, eaf, info)
 % p and optional vectors must be aligned to reference and have num_snp
 % elements. Optional vectors are z, n, beta, se, eaf, and info. p is
 % converted to logpvec in the returned Sumstats object. Use load_sumstats for
-% raw TSV input; create_sumstats expects already aligned full-panel vectors.
+% raw TSV input; create_sumstats expects full-panel vectors already in the
+% reference panel's order and a1 (ALT) orientation. No allele swaps are applied.
 %
 % See also statgen.Sumstats, statgen.load_sumstats.
     if nargin < 2

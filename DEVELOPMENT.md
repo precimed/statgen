@@ -23,6 +23,13 @@ Regenerate committed test fixtures after a format change:
 make fixtures
 ```
 
+## R package documentation and checks
+
+Run `make prepare-r-fixtures` before directly building the R package or its
+vignette from a checkout. This prepares bundled copies of the canonical test
+fixtures. The repository's R test/build and documentation targets already run
+this preparation step.
+
 ## Releases (brief)
 
 - Manual validation and optional TestPyPI publish are run via GitHub Actions

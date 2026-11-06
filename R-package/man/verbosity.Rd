@@ -14,8 +14,11 @@ set_verbosity(level)
 returns the selected level invisibly.
 }
 \description{
-Controls the package-wide statgen runtime verbosity setting.
+Controls the package-wide statgen runtime verbosity setting. Use
+\code{"quiet"} to suppress progress messages and loading summaries.
+Warnings remain visible.
 }
+\seealso{\link{allele_matching}}
 \examples{
 old <- get_verbosity()
 set_verbosity("quiet")

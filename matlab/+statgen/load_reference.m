@@ -11,6 +11,7 @@ function panel = load_reference(path, shards)
 %
 % Supported contig labels are 1-22 and X. Labels are not normalized: inputs
 % such as chr1 or chrX are rejected and should be fixed upstream.
+% BIM a1 is ALT and a2 is REF; the source loaders orient values to this panel.
 %
 % See also statgen.ReferencePanel, statgen.load_reference_cache.
     if nargin < 2

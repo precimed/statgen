@@ -34,8 +34,8 @@ info_vec(x, ...)
 \arguments{
 \item{path}{Character scalar path to a summary-statistics TSV or RDS cache.}
 \item{reference}{A \code{ReferencePanel}.}
-\item{allow_indel_swaps}{Logical scalar enabling swaps for allele pairs with
-one single-base and one longer allele. SNV swaps are always enabled.}
+\item{allow_indel_swaps}{Logical scalar enabling indel swaps. Default is
+\code{FALSE}; see \link{allele_matching}.}
 \item{sumstats, x}{A \code{Sumstats} object.}
 \item{p, z, n, beta, se, eaf, info}{Aligned
 numeric vectors. Optional vectors may be \code{NULL}.}
@@ -48,14 +48,16 @@ numeric vectors. Optional vectors may be \code{NULL}.}
 return ordinary R vectors, with \code{NULL} for absent optional fields.
 }
 \details{
-Rows are projected onto the supplied reference by exact chromosome, position,
-and allele-hash matching, with exact matches taking priority over swaps.
-Swaps negate Z and beta and complement EAF to reference \code{a1}.
+Loading prefers exact matches, swaps SNVs automatically, and uses
+\code{allow_indel_swaps} for indels. Effects and EAF describe the reference
+panel's \code{a1} (ALT) allele. \code{create_sumstats()} takes vectors already
+in that order and orientation; it performs no allele matching or swapping.
 Missing reference variants are represented by
 \code{NaN} in \code{logpvec(x)} and by \code{is_present(x) == FALSE}.
 Gzipped TSV input requires the suggested \pkg{R.utils} package so
 \code{data.table::fread()} can read compressed files portably.
 }
+\seealso{\link{allele_matching}, \code{load_reference}, \code{load_genotype}, \code{set_verbosity}}
 \examples{
 ref_path <- system.file("extdata", "reference_chr1.bim", package = "statgen")
 sum_path <- system.file("extdata", "traits_complete.tsv.gz", package = "statgen")

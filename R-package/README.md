@@ -28,6 +28,11 @@ install.packages("statgen")
 - [Main statgen repository](https://github.com/precimed/statgen)
 - Package vignette: `vignette("statgen")`
 
+## Allele Alignment
+
+Loaders match reversed SNVs automatically; indel swaps are opt-in.
+See `?allele_matching` and `vignette("statgen")` for details and examples.
+
 ## Annotation Loading
 
 `load_annotations()` loads one or more 3-column BED files as binary annotation

@@ -119,14 +119,12 @@ MAT_CACHE="derived/matlab_cache"
 SCRATCH="scratch/ld_build"
 ```
 
-`statgen` consumes post-harmonization inputs. Contig labels, genome build, and
-allele orientation should already be consistent across the reference,
-summary-statistics, annotation, genotype, and LD inputs.
+Prepare inputs so genome build, chromosome names, and DNA strand agree across
+files before using `statgen`.
 
-Summary-statistics files are matched to the reference by `chr:bp:a1:a2`. They
-must contain `chr`, `bp`, `a1`, `a2`, and `p` columns. `z` and `n` are optional;
-when present, missing values among variants with `p` values will produce
-warnings.
+Summary-statistics files must contain `chr`, `bp`, `a1`, `a2`, and `p` columns.
+`z` and `n` are optional; when present, missing values among variants with `p`
+values will produce warnings.
 
 Annotation examples include binary 3-column BED files, a grouped BED-like file,
 and a headered BED-like continuous annotation file. `functional_groups.annot`
@@ -254,9 +252,23 @@ annotations.save_cache(cache_root / "annotations.npz")
 genotype.save_cache(cache_root / "genotype.npz")
 ```
 
-The genotype cache stores metadata. The original BED files must still be
-available when later fetching genotype calls, unless a replacement `bed_path` is
-passed to `fetch_genotypes`.
+The loaders above use the default `allow_indel_swaps=False`. If indel swaps
+are appropriate for your inputs, set the option on each source load before
+saving caches, for example:
+
+```python
+trait_a = load_sumstats("source/sumstats/trait_a.tsv.gz", reference, allow_indel_swaps=True)
+genotype = load_genotype("source/genotypes/chr@", reference, allow_indel_swaps=True)
+trait_a.save_cache(cache_root / "trait_a.sumstats.npz")
+genotype.save_cache(cache_root / "genotype.npz")
+```
+
+See the [allele matching guide](ALLELE_MATCHING.md) for when to enable this
+option and [cache migration](ALLELE_MATCHING.md#genotype-caches-and-bed-overrides) for
+existing genotype caches.
+
+The original BED files must still be available when later fetching genotype
+calls, unless a replacement `bed_path` is passed to `fetch_genotypes`.
 
 ## Build MATLAB/Octave Caches
 
@@ -321,6 +333,21 @@ trait_b.save_cache(fullfile(mat_cache, 'trait_b.sumstats.mat'));
 annotations.save_cache(fullfile(mat_cache, 'annotations.mat'));
 genotype.save_cache(fullfile(mat_cache, 'genotype.mat'));
 ```
+
+MATLAB/Octave uses the same default matching policy. To enable indel swaps,
+pass `'allow_indel_swaps', true` to each applicable source loader before saving
+its cache:
+
+```matlab
+trait_a = statgen.load_sumstats('source/sumstats/trait_a.tsv.gz', reference, ...
+    'allow_indel_swaps', true);
+genotype = statgen.load_genotype('source/genotypes/chr@', reference, ...
+    'allow_indel_swaps', true);
+trait_a.save_cache(fullfile(mat_cache, 'trait_a.sumstats.mat'));
+genotype.save_cache(fullfile(mat_cache, 'genotype.mat'));
+```
+
+See the [allele matching guide](ALLELE_MATCHING.md) for details.
 
 ## Outputs
 

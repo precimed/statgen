@@ -20,6 +20,9 @@ library(statgen)
 set_verbosity("quiet")
 ```
 
+We use `quiet` to hide progress messages and loading summaries. Warnings remain
+visible.
+
 ## Reference, Sumstats, And Annotations
 
 The bundled package fixtures are intentionally tiny so that examples and CRAN
@@ -91,6 +94,27 @@ sumstats_cached <- load_sumstats_cache(sumstats_cache)
 identical(is_present(sumstats_cached), is_present(sumstats))
 ```
 
+## Allele Alignment
+
+This chrX example loads data with indel swaps enabled. See `?allele_matching`
+for allele roles, matching options, and cache behavior.
+
+```{r}
+swap_root <- system.file("extdata", "allele_swaps", package = "statgen", mustWork = TRUE)
+swap_reference <- load_reference(file.path(swap_root, "reference.bim"), shards = "X")
+swap_stats <- load_sumstats(file.path(swap_root, "sumstats.tsv.gz"), swap_reference,
+                            allow_indel_swaps = TRUE)
+swap_genotype <- load_genotype(file.path(swap_root, "genotype", "@"), swap_reference,
+                               allow_indel_swaps = TRUE)
+eaf_vec(swap_stats)
+is_allele_swapped(swap_genotype)
+fetch_genotypes_int8(swap_genotype, c(1, 3, 1))
+```
+
+`eaf_vec()` gives the frequency of the reference panel's `a1` (ALT) allele,
+and `fetch_genotypes_int8()` counts copies of that allele.
+`is_allele_swapped()` shows which variants needed a swap.
+
 ## LD Panels
 
 Python builds the canonical LD `.npz` distribution. For package examples,
@@ -120,8 +144,12 @@ fast_prune(logp, ld, r2_threshold = 0.35)
 
 ## Genotype Metadata And Fetching
 
-Genotype panels keep PLINK metadata and fetch hardcalls on demand. The original
-BED files must remain available unless a replacement `bed_path` is supplied.
+Genotype panels read calls from PLINK BED files when you request them. Keep
+those files available; if you move them, supply their new location with
+`bed_path`. A replacement file must keep the same variants, samples, and allele
+order. Counts use the usual 0/1/2 scale; use `haploid_mode = "ploidy_scaled"`
+to adjust for biological ploidy, such as male chrX. See `?allele_matching` for
+allele orientation and BED overrides.
 
 ```{r}
 ref_chr1 <- load_reference(system.file("extdata", "reference_chr1.bim", package = "statgen"))

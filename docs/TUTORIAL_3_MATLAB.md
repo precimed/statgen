@@ -113,14 +113,17 @@ pruned_genotypes = genotype.fetch_genotypes(pruned_snp_indices);
 
 disp(size(pruned_snp_indices))
 disp(size(pruned_genotypes))
+disp(genotype.is_allele_swapped(pruned_snp_indices))
 ```
 
 `pruned_snp_indices` are one-based reference-coordinate indices in
 MATLAB/Octave. `pruned_genotypes` has samples as rows and requested SNPs as
 columns.
-`fetch_genotypes` returns raw PLINK-decoded calls by default; pass
-`'ploidy_scaled'` when haploid calls should be mapped onto declared biological
-ploidy.
+Calls use the raw diploid scale by default; pass `'ploidy_scaled'` to adjust
+for biological ploidy.
+
+Counts, Z, beta, and EAF describe the reference panel's `a1` (ALT) allele;
+see the [allele matching guide](ALLELE_MATCHING.md).
 
 When using a genotype metadata cache, the original BED files must still be
 available. If they moved, pass a replacement BED path as the second argument to

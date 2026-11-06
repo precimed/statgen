@@ -60,7 +60,8 @@ writers, this is the output cache path.}
 }
 \details{
 Reference panels are represented as \code{ReferencePanel} S3 objects backed by
-an ordered list of reference shards.
+an ordered list of reference shards. Reference BIM \code{a1} is ALT and
+\code{a2} is REF; other loading functions use this panel's allele orientation.
 
 Most exported functions in this API are S3 generics operating on
 \code{ReferencePanel} objects and other reference-aligned statgen objects.
@@ -81,6 +82,7 @@ explicit reference-panel cache writer.
 \code{ReferencePanel} S3 object. Accessors return ordinary R vectors or data
 frames; allele hashes are \code{bit64::integer64} vectors.
 }
+\seealso{\link{allele_matching}}
 \examples{
 path <- system.file("extdata", "reference_chr1.bim", package = "statgen")
 ref <- load_reference(path)
