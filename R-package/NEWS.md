@@ -1,7 +1,8 @@
 # statgen 0.4.1
 
-* Long alleles, such as structural-variant sequences, are now matched on up to their first 1,000,000 bases instead of their first 150. `load_reference()`, `load_genotype()`, and `load_sumstats()` warn once per file if any allele is longer than that.
-* Reference caches written by earlier versions, including those inside existing LD distributions, may fail to match alleles longer than 150 bases; reference checksums do not detect this. Rebuild the cache with `load_reference()` and `save_reference_cache()` to fix it. Alleles of 150 bases or fewer are unaffected.
+* Long alleles, such as structural variants, are now matched on their first 1,000,000 bases instead of their first 150. `load_reference()`, `load_genotype()`, and `load_sumstats()` warn once per file if an allele is longer, and keep complete allele strings.
+* BIM files are now read with `data.table::fread()`, which is much faster for long alleles. Malformed BIM files that would otherwise be read only partially now fail with an error.
+* Allele hashing is faster, particularly for panels with long alleles.
 
 # statgen 0.4.0
 

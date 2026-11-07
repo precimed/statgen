@@ -10,48 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.1] - 2026-11-07
 
 ### Changed
-- Long alleles, such as structural variant sequences, are now matched on up to
-  their first 1,000,000 bases instead of their first 150 (Python, MATLAB/Octave,
-  and R). Loaders warn once per file if any allele is longer than that.
-- Reference caches written by earlier versions, including those inside existing
-  LD distributions, may fail to match alleles longer than 150 bases. Reference
-  checksums do not detect this. Rebuild the cache from its source files to fix it.
-  Alleles of 150 bases or fewer are unaffected.
-- R BIM loading now uses `data.table::fread()` for faster parsing, including long
-  alleles, and rejects incomplete reads.
-- Python reference caches now use less memory when a panel contains very long
-  alleles or SNP IDs. Writers now emit schema `reference_cache/0.2`; readers
-  continue to support `reference_cache/0.1`. Reading the new schema requires
-  statgen 0.4.1 or later.
+- Long alleles, such as structural variants, are now matched on their first
+  1,000,000 bases instead of their first 150. Loaders warn if an allele is longer.
+- Python reference caches use less memory for long alleles and SNP IDs.
+- Python reference caches use schema `reference_cache/0.2`; `0.1` caches remain
+  loadable.
+- Faster R BIM loading, including for long alleles.
 
 ## [0.4.0] - 2026-11-06
 
 ### Added
-- Python, MATLAB/Octave, and R source loaders automatically match reversed
-  SNVs, including A/T and C/G under the same-strand assumption. Both loaders
-  accept `allow_indel_swaps` to also match reversed indels with exactly one
-  single-base allele; pairs with two multi-base alleles remain exact-only.
-- Genotype panels expose `is_allele_swapped` on the full reference SNP axis.
-  Genotype fetching via `fetch_genotypes_int8` and `fetch_genotypes` orients
-  hardcalls to the reference panel's `a1` (ALT) allele before ploidy scaling.
-  When source alleles are reversed, Z scores and BETA change sign, and EAF
-  becomes `1 - EAF`, so they describe the reference panel's `a1` (ALT) allele.
+- Summary statistics and genotypes with reversed SNV alleles are now matched
+  automatically and oriented to the reference `a1` (ALT) allele: Z scores and
+  BETA change sign, EAF becomes `1 - EAF`, and genotype counts are flipped.
+  Use `allow_indel_swaps` to also match reversed indels.
+- Genotype panels expose `is_allele_swapped`.
 
 ### Changed
-- Python, MATLAB/Octave, and R `load_sumstats` validate and drop rows with
-  missing `p` before matching instead of rejecting them.
-- `create_sumstats` accepts missing `p` (`NaN`, or `NA` in R), setting
-  `logpvec` and present optional vectors to `NaN` at those positions.
-- MATLAB cache writers now default to MAT-file v7.3; Octave retains v7.
-- `load_reference` now rejects repeated variants and SNPs listed with both
-  allele orders, such as A/G and G/A at the same position.
-- Genotype caches now use `genotype_cache/0.2` to record allele swaps.
-
-### Fixed
-- MATLAB/Octave sumstats loading now rejects infinite base-pair positions.
-- R variant matching now sorts allele hashes at or above
-  `0x7FF0000000000000` correctly. Previously, two such alleles at one position
-  could lose exact matches, and duplicate keys could load silently.
+- `load_sumstats` drops rows with missing `p` instead of failing;
+  `create_sumstats` accepts missing `p`.
+- `load_reference` rejects duplicate variants and SNVs listed in both allele
+  orders.
+- Genotype caches use schema `genotype_cache/0.2`; `0.1` caches remain loadable.
+- MATLAB cache writers default to MAT-file v7.3 (Octave keeps v7).
 
 ## [0.3.4] - 2026-05-27
 
