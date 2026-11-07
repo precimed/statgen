@@ -51,6 +51,57 @@ def _source_reference_script(expr: str) -> str:
 
 @pytest.mark.r
 @skipif_no_rscript
+def test_r_bim_reader_preserves_character_fields(tmp_path):
+    path = tmp_path / "characters.bim"
+    rows = [
+        ("1", "000123", "0.00", "000100", "AC", "G"),
+        ("1", "1e6", "1e-3", "200", "T", "CA"),
+        ("X", "NA", "0", "300", "G", "A"),
+    ]
+    path.write_text("".join("\t".join(row) + "\n" for row in rows))
+    result = run_rscript(_source_reference_script(
+        f'df <- .parse_bim({json.dumps(str(path))}); '
+        'stopifnot(identical(df$chr, c("1", "1", "X")), '
+        'identical(df$snp, c("000123", "1e6", "NA")), '
+        'identical(df$cm, c("0.00", "1e-3", "0")), '
+        'identical(df$bp, c(100L, 200L, 300L)), '
+        'identical(df$a1, c("AC", "T", "G")), '
+        'identical(df$a2, c("G", "CA", "A")))'
+    ))
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.r
+@skipif_no_rscript
+@pytest.mark.parametrize("row", ["1 rs1 0 100 A", "1 rs1 0 100 A G extra"])
+def test_r_bim_reader_requires_six_columns(tmp_path, row):
+    path = tmp_path / "columns.bim"
+    path.write_text((row + "\n") * 3)
+    result = run_rscript(_source_reference_script(
+        f'failed <- tryCatch({{.parse_bim({json.dumps(str(path))}); FALSE}}, '
+        'error=function(e) grepl("expected 6 whitespace-delimited columns", conditionMessage(e), fixed=TRUE)); '
+        'stopifnot(failed)'
+    ))
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.r
+@skipif_no_rscript
+def test_r_bim_reader_rejects_short_row_mid_file(tmp_path):
+    # A malformed row must fail the load rather than silently truncate the file.
+    path = tmp_path / "malformed.bim"
+    rows = [f"1\trs{i}\t0\t{i}\tA\tG" for i in range(1, 31)]
+    rows.insert(15, "1\tshort\t0\t31\tA")
+    path.write_text("\n".join(rows) + "\n")
+    result = run_rscript(_source_reference_script(
+        f'failed <- tryCatch({{.parse_bim({json.dumps(str(path))}); FALSE}}, error=function(e) TRUE); '
+        'stopifnot(failed)'
+    ))
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.r
+@skipif_no_rscript
 def test_r_load_reference_sharded_matches_fixture_contract():
     result = run_rscript(
         _source_reference_script(

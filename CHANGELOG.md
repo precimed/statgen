@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LD distributions, may fail to match alleles longer than 150 bases. Reference
   checksums do not detect this. Rebuild the cache from its source files to fix it.
   Alleles of 150 bases or fewer are unaffected.
+- R BIM loading now uses `data.table::fread()` for faster parsing, including long
+  alleles, and rejects incomplete reads.
 
 ## [0.4.0] - 2026-11-06
 

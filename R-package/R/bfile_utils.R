@@ -3,16 +3,20 @@
     stop(sprintf("File not found: %s", path), call. = FALSE)
   }
   df <- tryCatch(
-    utils::read.table(
-      path,
+    data.table::fread(
+      file = path,
       header = FALSE,
-      sep = "",
       quote = "",
-      comment.char = "",
-      stringsAsFactors = FALSE,
-      colClasses = rep("character", 6L),
-      fill = FALSE
+      colClasses = "character",
+      na.strings = NULL,
+      fill = FALSE,
+      data.table = FALSE,
+      showProgress = FALSE
     ),
+    # fread can warn and return only the rows before a malformed record.
+    warning = function(w) {
+      stop(sprintf("%s: expected 6 whitespace-delimited columns; incomplete BIM read", path), call. = FALSE)
+    },
     error = function(e) {
       stop(sprintf("%s: expected 6 whitespace-delimited columns", path), call. = FALSE)
     }

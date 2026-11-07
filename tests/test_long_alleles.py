@@ -211,11 +211,7 @@ def test_octave_loader_warnings_collision_roundtrip_and_full_validation(tmp_path
 def test_r_loader_warnings_collision_roundtrip_and_full_validation(tmp_path):
     bim, tsv, _, _ = write_sources(tmp_path)
     cache = tmp_path / 'ref.rds'
-    # Isolate post-reader behavior: unchanged read.table is too slow on these fields.
-    setup = (f'for(f in list.files("{R_PACKAGE_DIR / "R"}",pattern="[.]R$",full.names=TRUE)) source(f); '
-             'assignInNamespace("read.table", function(file, ...) '
-             'data.table::fread(file,header=FALSE,quote="",colClasses="character",'
-             'na.strings=NULL,data.table=FALSE,nThread=1L,showProgress=FALSE),ns="utils"); ')
+    setup = f'for(f in list.files("{R_PACKAGE_DIR / "R"}",pattern="[.]R$",full.names=TRUE)) source(f); '
     result = run_rscript(setup +
         'messages <- character(); withCallingHandlers({ '
         f'ref <- load_reference("{bim}"); stopifnot(a1_hash64(ref)==a2_hash64(ref)); '
