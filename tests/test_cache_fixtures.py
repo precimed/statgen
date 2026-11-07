@@ -31,6 +31,7 @@ GENOTYPE = "tests/fixtures/genotype/sharded/@"
 
 EXPECTED_CACHE_FIXTURES = [
     ("reference", "python", "reference_cache_0_1", "npz", "py"),
+    ("reference", "python", "reference_cache_0_2", "npz", "py"),
     ("reference", "matlab", "reference_cache_0_1", "mat", "m"),
     ("reference", "r", "reference_cache_0_1", "rds", "R"),
     ("sumstats", "python", "sumstats_cache_0_1", "npz", "py"),

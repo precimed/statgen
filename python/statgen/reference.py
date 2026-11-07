@@ -1,5 +1,4 @@
 import hashlib
-import io
 import json
 import logging
 from pathlib import Path
@@ -19,7 +18,8 @@ from ._utils import (
 
 logger = logging.getLogger(__name__)
 
-_CACHE_SCHEMA = "reference_cache/0.1"
+_CACHE_SCHEMA = "reference_cache/0.2"
+_CACHE_SCHEMAS = ("reference_cache/0.1", _CACHE_SCHEMA)
 
 
 def _validate_reference_keys(shard) -> None:
@@ -437,38 +437,74 @@ def load_reference(path, shards=None) -> ReferencePanel:
 
 
 def save_reference_cache(panel: ReferencePanel, path) -> None:
-    # Metadata (schema, labels, checksums) as a compact JSON blob stored in the npz.
-    # SNP-axis numeric vectors (bp) and string arrays are stored as native
-    # binary numpy arrays — not JSON — per the performance contract.
+    _write_deterministic_npz(Path(path), _reference_cache_arrays(panel))
+
+
+def _reference_cache_arrays(panel):
+    # Yield one field at a time so encoded strings are released after writing.
     meta = {
         "schema": _CACHE_SCHEMA,
         "shard_labels": [s.label for s in panel.shards],
         "shard_checksums": [s.checksum for s in panel.shards],
     }
-    arrays: dict = {
-        "_meta": np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
-    }
+    yield "_meta", np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
     for i, s in enumerate(panel.shards):
         p = f"s{i}_"
-        arrays[p + "chr"] = np.asarray(s.chr, dtype=str)
-        arrays[p + "snp"] = np.asarray(s.snp, dtype=str)
-        arrays[p + "bp"]  = s.bp
-        arrays[p + "a1"]  = np.asarray(s.a1, dtype=str)
-        arrays[p + "a2"]  = np.asarray(s.a2, dtype=str)
-        arrays[p + "a1_hash64"] = s.a1_hash64
-        arrays[p + "a2_hash64"] = s.a2_hash64
-    _write_deterministic_npz(Path(path), arrays)
+        yield p + "chr", np.asarray(s.chr, dtype=str)
+        yield p + "snp_text", np.frombuffer("\n".join(s.snp).encode("utf-8"), dtype=np.uint8)
+        yield p + "bp", s.bp
+        yield p + "a1_text", np.frombuffer("\n".join(s.a1).encode("utf-8"), dtype=np.uint8)
+        yield p + "a2_text", np.frombuffer("\n".join(s.a2).encode("utf-8"), dtype=np.uint8)
+        yield p + "a1_hash64", s.a1_hash64
+        yield p + "a2_hash64", s.a2_hash64
+
+
+def _cache_vector(data, name, dtype):
+    if name not in data:
+        raise ValueError(f"Invalid reference cache: missing {name}")
+    array = data[name]
+    expected = np.dtype(dtype)
+    matches = array.dtype.kind == expected.kind
+    if dtype != "U":
+        matches = matches and array.dtype.itemsize == expected.itemsize
+    if array.ndim != 1 or not matches:
+        raise ValueError(f"Invalid reference cache: {name} must be a one-dimensional {dtype} array")
+    return array
+
+
+def _cache_strings(data, name, schema, size):
+    if schema == "reference_cache/0.1":
+        values = _cache_vector(data, name, "U").astype(object)
+    else:
+        payload = _cache_vector(data, name + "_text", "uint8")
+        try:
+            text = payload.tobytes().decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Invalid reference cache: {name}_text contains invalid UTF-8") from exc
+        del payload
+        values = np.asarray(text.split("\n") if text else [], dtype=object)
+    if len(values) != size:
+        raise ValueError(f"Invalid reference cache: {name} vector length mismatch")
+    return values
 
 
 def load_reference_cache(path, shards=None) -> ReferencePanel:
     with np.load(path, allow_pickle=False) as data:
-        meta = json.loads(bytes(data["_meta"]).decode())
+        meta = json.loads(_cache_vector(data, "_meta", "uint8").tobytes().decode("utf-8"))
+        if not isinstance(meta, dict):
+            raise ValueError("Invalid reference cache: metadata must be an object")
         schema = meta.get("schema")
-        if schema != _CACHE_SCHEMA:
+        if schema not in _CACHE_SCHEMAS:
             raise ValueError(f"Unsupported reference cache schema: {schema!r}")
 
-        labels = list(meta.get("shard_labels", []))
-        checksums = list(meta.get("shard_checksums", []))
+        labels = meta.get("shard_labels")
+        checksums = meta.get("shard_checksums")
+        if (not isinstance(labels, list) or not labels
+                or not all(isinstance(label, str) and label for label in labels)
+                or len(set(labels)) != len(labels)
+                or not isinstance(checksums, list)
+                or not all(isinstance(checksum, str) and checksum for checksum in checksums)):
+            raise ValueError("Invalid reference cache: required shard_labels/shard_checksums metadata")
         if len(labels) != len(checksums):
             raise ValueError("Invalid reference cache: shard_labels and shard_checksums length mismatch")
         selected = validate_requested_shards(shards, labels, "load_reference_cache")
@@ -480,29 +516,33 @@ def load_reference_cache(path, shards=None) -> ReferencePanel:
             p = f"s{i}_"
             if p + "a1_hash64" not in data or p + "a2_hash64" not in data:
                 raise ValueError("reference cache missing a1_hash64/a2_hash64; rebuild cache")
+            bp = _cache_vector(data, p + "bp", "int64")
+            chr_arr = _cache_vector(data, p + "chr", "U")
+            a1_hash64 = _cache_vector(data, p + "a1_hash64", "uint64")
+            a2_hash64 = _cache_vector(data, p + "a2_hash64", "uint64")
             shard_objs.append(
                 ReferenceShard._from_arrays(
                     label,
-                    data[p + "chr"],
-                    data[p + "snp"],
-                    data[p + "bp"],
-                    data[p + "a1"],
-                    data[p + "a2"],
+                    chr_arr,
+                    _cache_strings(data, p + "snp", schema, bp.size),
+                    bp,
+                    _cache_strings(data, p + "a1", schema, bp.size),
+                    _cache_strings(data, p + "a2", schema, bp.size),
                     checksums[i],
-                    data[p + "a1_hash64"],
-                    data[p + "a2_hash64"],
+                    a1_hash64,
+                    a2_hash64,
                 )
             )
     return ReferencePanel(shard_objs)
 
 
-def _write_deterministic_npz(path: Path, arrays: dict[str, np.ndarray]) -> None:
+def _write_deterministic_npz(path: Path, arrays) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name, array in arrays.items():
-            buf = io.BytesIO()
-            np.save(buf, array, allow_pickle=False)
+        for name, array in arrays:
             info = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            zf.writestr(info, buf.getvalue())
+            with zf.open(info, "w", force_zip64=True) as output:
+                np.save(output, array, allow_pickle=False)
+            del array

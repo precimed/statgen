@@ -11,7 +11,7 @@ Cache fixture generators are intentionally separate from
 Run all current-schema generators from the repository root:
 
 ```sh
-python tests/fixtures/cache/generate_reference_python_reference_cache_0_1.py
+python tests/fixtures/cache/generate_reference_python_reference_cache_0_2.py
 python tests/fixtures/cache/generate_sumstats_python_sumstats_cache_0_1.py
 python tests/fixtures/cache/generate_annotations_python_annotations_cache_0_2.py
 python tests/fixtures/cache/generate_genotype_python_genotype_cache_0_2.py
@@ -102,3 +102,14 @@ SHA-256 hashes recorded before the allele-swap writer migration:
 | `genotype_python_genotype_cache_0_1.npz` | `29369e1ab5ec1549e0b3ddf18382acdbb86f554597598cc46e40d8c442beeaaf` |
 | `genotype_matlab_genotype_cache_0_1.mat` | `9d3459f0cfdcecb668ac041ef39e01dc55e0fc73d8b75ba5da85cf609d722a1f` |
 | `genotype_r_genotype_cache_0_1.rds` | `23408efd591e5d6b3e62b5294abd1fc70b6929de34bc7258a9ca33a295f4414b` |
+
+### Python reference `/0.1`
+
+`reference_python_reference_cache_0_1.npz` is preserved unchanged. Its historical
+writer and generator are available at revision
+`650dc05e8661940133dab2d203e21ce900354578`. To reproduce it, check out that
+revision and run its `generate_reference_python_reference_cache_0_1.py` script
+from the repository root. The current writer and shared helper emit `/0.2`.
+The `/0.2` fixture uses the canonical sharded reference inputs and is generated
+separately with the current-schema command above; neither fixture is regenerated
+by `make fixtures`.

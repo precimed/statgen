@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from statgen.ld import _write_ld_npz_distribution, load_ld, validate_ld_distribution
-from statgen.reference import load_reference
+from statgen.reference import load_reference, load_reference_cache
 from tests.conftest import FIXTURES_DIR, matlab_data_lines, run_octave, skipif_matlab_engine, skipif_no_octave
 
 
@@ -92,6 +92,14 @@ def test_write_ld_npz_distribution_from_synthetic_tables_validates_and_loads(tmp
 
     manifest = _write_ld_npz_distribution(root, _synthetic_ld_specs(reference))
 
+    with np.load(root / manifest["reference_cache"], allow_pickle=False) as data:
+        assert json.loads(data["_meta"].tobytes())["schema"] == "reference_cache/0.2"
+        assert "s0_a1_text" in data and "s0_a1" not in data
+    cached_reference = load_reference_cache(root / manifest["reference_cache"])
+    for original, cached in zip(reference.shards, cached_reference.shards):
+        assert original.checksum == cached.checksum
+        for field in ("snp", "a1", "a2", "a1_hash64", "a2_hash64"):
+            np.testing.assert_array_equal(getattr(original, field), getattr(cached, field))
     assert manifest["runtime_format"] == "python_npz_csc32"
     assert [entry["file"] for entry in manifest["shards"]] == [
         "ld_chr1.npz",

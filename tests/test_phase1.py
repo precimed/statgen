@@ -313,8 +313,8 @@ def test_cache_load_trusts_checksum_until_explicit_validation(tmp_path):
 
     with np.load(cache, allow_pickle=False) as data:
         arrays = {k: data[k] for k in data.files}
-    arrays["s0_a1"] = arrays["s0_a1"].copy()
-    arrays["s0_a1"][0] = "T"
+    arrays["s0_a1_text"] = arrays["s0_a1_text"].copy()
+    arrays["s0_a1_text"][0] = ord("T")
     bad_cache = tmp_path / "bad_payload.npz"
     np.savez_compressed(bad_cache, **arrays)
 

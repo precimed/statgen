@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alleles of 150 bases or fewer are unaffected.
 - R BIM loading now uses `data.table::fread()` for faster parsing, including long
   alleles, and rejects incomplete reads.
+- Python reference caches now use less memory when a panel contains very long
+  alleles or SNP IDs. Writers now emit schema `reference_cache/0.2`; readers
+  continue to support `reference_cache/0.1`. Reading the new schema requires
+  statgen 0.4.1 or later.
 
 ## [0.4.0] - 2026-11-06
 

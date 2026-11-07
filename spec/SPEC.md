@@ -193,6 +193,10 @@ validate user-supplied in-memory arrays and vectors before assembling objects.
 
 Cache loaders validate cache schema, required metadata, dimensions, shard
 selection, and compatibility gates such as reference checksums where applicable.
+They MUST reject unsupported schemas, including future versions, with a clear
+error identifying the unsupported schema before interpreting version-specific
+payload fields. Cache schemas are runtime-specific; equal schema identifiers
+do not imply cross-runtime compatibility.
 They may trust payload values written by `statgen` cache writers and are not
 required to repeat full source-style validation on the default load path.
 

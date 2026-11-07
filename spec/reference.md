@@ -191,6 +191,47 @@ zero-based shard offsets for compatibility with portable metadata.
 
 ## Cache layout
 
+### Shared requirements
+
+Newline-delimited reference string payloads encode a shard-local string vector
+by joining complete values with `\n`, with no trailing newline. An empty shard
+has an empty payload and decodes to zero values. Because BIM fields must not
+contain embedded whitespace and alleles are non-empty, newline is a safe
+separator. Decoded vector lengths MUST equal the shard row count. This encoding
+is independent of the reference checksum byte stream, which retains its
+record-ending newlines.
+
+Cache writers MUST NOT pad SNP-ID or allele columns to their longest value.
+Schema migration MUST preserve stored hashes and checksums unchanged.
+
+### Python
+
+Python reference caches are `.npz` files. Writers use `reference_cache/0.2`;
+readers support `reference_cache/0.1` and `reference_cache/0.2`.
+
+Both Python schemas store `_meta` as a one-dimensional `uint8` array containing
+UTF-8 JSON with `schema`, `shard_labels`, and `shard_checksums`. Shard index `i`
+follows metadata order. Both schemas store `s{i}_chr` as a fixed-width Unicode
+array, `s{i}_bp` as an `int64` vector, and `s{i}_a1_hash64` and `s{i}_a2_hash64`
+as `uint64` vectors. Shard row counts come from `s{i}_bp`; numeric, hash, and
+chromosome vector lengths MUST agree with them.
+
+#### Schema `reference_cache/0.1` (legacy reader support)
+
+`s{i}_snp`, `s{i}_a1`, and `s{i}_a2` are fixed-width Unicode arrays of
+individual strings, with lengths equal to the shard row count. Reading this
+schema eagerly produces NumPy object arrays of individual strings.
+
+#### Schema `reference_cache/0.2` (current writer format)
+
+`s{i}_snp_text`, `s{i}_a1_text`, and `s{i}_a2_text` replace the legacy string
+arrays. Each is a one-dimensional `uint8` array containing a UTF-8 encoded
+newline-delimited payload as defined above. Readers reject invalid UTF-8 and
+eagerly decode selected shards into the same object-array representation as
+schema `0.1`.
+
+### MATLAB/Octave — schema `reference_cache/0.1`
+
 MATLAB/Octave reference caches are `.mat` files with user-inspectable
 panel-wide variables at top level:
 
@@ -225,13 +266,8 @@ sufficient to reconstruct `ReferenceShard` objects.
 
 `snp_text_by_shard`, `a1_text_by_shard`, and `a2_text_by_shard` are cell arrays
 with one character vector per shard in panel order. Each character vector
-encodes the corresponding shard-local string vector as `strjoin(values, "\n")`
-with no trailing newline. This payload encoding is independent of the reference
-checksum byte stream, which continues to serialize each checksum record with a
-trailing newline as defined above. Because BIM fields must not contain embedded
-whitespace and alleles are non-empty, newline is not a legal field value and is
-safe as the cache separator. Decoders must reject decoded string-vector lengths
-that do not equal the shard `num_snp` implied by `shard_start0`/`shard_stop0`.
+uses the newline-delimited encoding above. Shard `num_snp` is implied by
+`shard_start0`/`shard_stop0`.
 
 MATLAB/Octave implementations should keep these per-shard string payloads in
 their encoded form after cache load and instantiate cell arrays lazily when
@@ -239,6 +275,8 @@ their encoded form after cache load and instantiate cell arrays lazily when
 repeating each shard label `num_snp` times and concatenating shard vectors in
 panel order; it is not stored in the cache. `bp`, `a1_hash64`, and `a2_hash64`
 are available without decoding string payloads.
+
+### R — schema `reference_cache/0.1`
 
 R reference caches are RDS files containing one named list with the same logical
 top-level fields and metadata fields as the MATLAB/Octave cache layout above.
@@ -249,10 +287,13 @@ payload per shard in panel order. The RDS payload stores these encoded shard
 strings, not decoded per-SNP character vectors; cache-loaded R references should
 keep them encoded until the corresponding accessor is called.
 
+### Validation and API
+
 The `a1_hash64`/`a2_hash64` cache fields and sumstats matching semantics are
 cross-runtime object contracts. Cache metadata validation should be cheap,
 depending on shard count and array dimensions rather than scanning all SNP
-values or decoding all string payloads on the default load path.
+values. MATLAB/Octave and R should avoid decoding string payloads on the default
+load path; Python performs the eager decoding specified above.
 `load_reference_cache` trusts stored shard checksums, matching the cache
 behavior of reference-aligned objects that cannot recompute those checksums
 themselves. Callers who want to verify reference cache integrity may explicitly
@@ -319,14 +360,15 @@ Expected behavior:
   applies against cached shard labels per
   [contigs-and-shards.md](contigs-and-shards.md).
 - `ReferencePanel.select_shards(shards)` preserves cache-loaded shard payloads
-  without forcing string materialization. When a cache-loaded panel is subset in
-  memory, selected shards retain their encoded per-shard `snp`, `a1`, and `a2`
-  payloads until the corresponding string accessors are used.
-- `load_reference_cache` validates shard-offset metadata and panel-wide vector
-  lengths cheaply before reconstructing shard objects. It validates that
-  per-shard string payload containers match `n_shards`; decoded string-vector
-  lengths may be validated lazily when those payloads are materialized. Cache
-  loaders trust stored shard checksums and do not recompute them.
+  without forcing lazy string materialization. Selected Python shards retain
+  their existing decoded object arrays; MATLAB/Octave and R shards retain
+  encoded payloads until the corresponding string accessors are used.
+- `load_reference_cache` validates runtime-specific shard metadata and vector
+  lengths before reconstructing shard objects. For MATLAB/Octave and R,
+  per-shard string payload containers must match `n_shards`; decoded vector
+  lengths may be validated lazily when materialized. Python validates decoded
+  lengths eagerly as specified above. Cache loaders trust stored shard
+  checksums and do not recompute them.
 - `ReferencePanel.validate_checksums()` recomputes each shard checksum from the
   current `chr`, `bp`, `a1`, and `a2` values, compares it to the stored
   `ReferenceShard.checksum`, fails on mismatch with the shard label, and

@@ -45,7 +45,7 @@ def generate_python_cache_fixture(object_name: str) -> None:
     reference = (load_reference(FIXTURES_REL / "allele_swaps/reference.bim")
                  if object_name == "genotype" else _reference())
     if object_name == "reference":
-        save_reference_cache(reference, CACHE_DIR / "reference_python_reference_cache_0_1.npz")
+        save_reference_cache(reference, CACHE_DIR / "reference_python_reference_cache_0_2.npz")
     elif object_name == "sumstats":
         panel = load_sumstats(FIXTURES_REL / "sumstats/traits_complete.tsv.gz", reference)
         save_sumstats_cache(panel, CACHE_DIR / "sumstats_python_sumstats_cache_0_1.npz")

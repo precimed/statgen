@@ -3,7 +3,7 @@
   "schema_version": "1.0",
   "runtime_format": "python_npz_csc32",
   "reference_cache": "reference_cache.npz",
-  "reference_cache_md5": "636977a7c893d16bbd247ec8a9be93ff",
+  "reference_cache_md5": "9151255289c80dbdd4b69feb23dad0a7",
   "shards": [
     {
       "chr": "1",

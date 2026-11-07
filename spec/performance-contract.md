@@ -49,10 +49,9 @@ sparse-vs-dense representation unless an object spec explicitly documents a
 different normalization.
 
 The native-array requirement applies to numeric, logical, and sparse SNP-axis
-payloads. Python string-typed cache fields should use Python-native array
-storage when present. MATLAB/Octave and R object specs may define
-cache-specific encodings for string-typed fields when that improves load
-performance while preserving the logical object contract; for example,
+payloads. Object specs may define runtime-specific encodings for
+string-typed fields when that improves memory use or load performance while
+preserving the logical object contract; for example,
 MATLAB/Octave reference caches store per-shard string vectors as
 newline-delimited character payloads.
 
