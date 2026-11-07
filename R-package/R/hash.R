@@ -39,7 +39,7 @@ names(.single_base_hash64) <- c("A", "C", "G", "T")
   limit <- min(.allele_hash_block_terms, .allele_hash_batch_bytes)
   long <- lengths > limit
   split <- c(TRUE, diff(floor((ends - 1) / .allele_hash_batch_bytes)) != 0) |
-    long | c(FALSE, head(long, -1L))
+    long | c(FALSE, long[-length(long)])
   batch_starts <- which(split)
   batch_ends <- c(batch_starts[-1L] - 1L, length(lengths))
   list(starts = batch_starts, ends = batch_ends)
