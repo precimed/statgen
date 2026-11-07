@@ -1,9 +1,10 @@
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+0 errors | 0 warnings | 0 notes
 
-* This is a new release.
+Checked on Windows (R 4.6.2), macOS (R 4.6.2), and Ubuntu (R 4.6.2, R-devel, R 4.5.3).
 
-* NOTE: "Possibly misspelled words in DESCRIPTION: LD, statgen"
-  Both are intentional: 'LD' is a standard abbreviation for Linkage Disequilibrium
-  in statistical genetics; 'statgen' is the name of this package and software suite.
+## Update
+
+This updates statgen from the CRAN version 0.3.2 to 0.4.1. Changes are
+documented in NEWS.md.
