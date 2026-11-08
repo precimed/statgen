@@ -82,7 +82,9 @@ IDs must contain 1--32 printable non-whitespace ASCII characters. Empty,
 missing, overlength, or invalid-character IDs and the placeholders \code{.},
 \code{NA}, and \code{NaN} are excluded; \code{0} is an ordinary ID. Comparison is exact and case-sensitive:
 \code{rs123} and \code{RS123} do not match. There is no coordinate fallback.
-Original reference strings and row order are preserved.
+Eligibility applies to IDs returned by the existing readers, including their
+quoting and whitespace handling. Original reference strings and row order
+are preserved.
 
 Summary statistics require \code{SNP}, the allele columns, and \code{P};
 coordinate columns are optional and ignored. Rows with missing P are validated,

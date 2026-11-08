@@ -96,8 +96,9 @@ identical(is_present(sumstats_cached), is_present(sumstats))
 
 ## Allele Alignment
 
-This chrX example loads data with indel swaps enabled. See `?allele_matching`
-for allele roles, matching options, and cache behavior.
+Loaders default to `match_by = "genomic_position"`, matching positions and
+alleles. This chrX example enables indel swaps in that mode. See
+`?allele_matching` for allele roles, matching options, and cache behavior.
 
 ```{r}
 swap_root <- system.file("extdata", "allele_swaps", package = "statgen", mustWork = TRUE)
@@ -113,7 +114,22 @@ fetch_genotypes_int8(swap_genotype, c(1, 3, 1))
 
 `eaf_vec()` gives the frequency of the reference panel's `a1` (ALT) allele,
 and `fetch_genotypes_int8()` counts copies of that allele.
-`is_allele_swapped()` shows which variants needed a swap.
+`is_allele_swapped()` shows which variants required count inversion.
+
+To select marker IDs instead of positions, both loaders accept
+`match_by = "id"`; allele matching is still required. For example:
+
+```{r, eval=FALSE}
+trait_by_id <- load_sumstats(path, reference, match_by = "id")
+genotype_by_id <- load_genotype(bfile_prefix, reference, match_by = "id")
+```
+
+ID mode supports non-palindromic SNVs, including strand complements. Comparison
+is case-sensitive: `rs123` and `RS123` do not match. Sumstats require `SNP`,
+the allele columns, and `P` and ignore coordinates, searching all source rows;
+genotypes search only the corresponding chromosome. Reference ID/allele keys
+are checked for ambiguity across the supplied panel in both loaders. See
+`?allele_matching` for eligibility and duplicate handling.
 
 ## LD Panels
 

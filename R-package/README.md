@@ -38,10 +38,8 @@ trait <- load_sumstats(path, reference, match_by = "id")
 genotype <- load_genotype(bfile_prefix, reference, match_by = "id")
 ```
 
-ID mode supports non-palindromic SNVs, including strand complements. IDs are
-case-sensitive: `rs123` and `RS123` do not match. Summary statistics ignore
-coordinates and search all source rows; genotypes search only the corresponding
-chromosome. Both modes orient values to reference `a1`.
+ID mode matches SNVs other than A/T and C/G by case-sensitive marker ID,
+including strand complements. Both modes orient values to reference `a1`.
 See `?allele_matching` and `vignette("statgen")` for details and examples.
 
 ## Annotation Loading

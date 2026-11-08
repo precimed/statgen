@@ -4,9 +4,11 @@
 reference-aligned statistical genetics data: reference variants, genotypes, LD,
 annotations, and GWAS summary statistics.
 
-All panel objects use reference coordinates. Genome build, contig naming, and
-strand should be resolved upstream by
+All panel objects use reference coordinates. For the default genomic-position
+matching, resolve genome build, contig naming, and strand upstream with
 [genomatch](https://github.com/precimed/genomatch) or an equivalent pipeline.
+Sumstats and genotype loaders also support restricted
+[ID matching](docs/ALLELE_MATCHING.md#id-matching) for SNVs other than A/T and C/G.
 
 ## Where to Start
 
@@ -39,7 +41,7 @@ strand should be resolved upstream by
 | `LDPanel` | Sparse LD distribution tied to a matching reference | Built LD distribution directory produced by `statgen` from PLINK bfiles |
 | `AnnotationPanel` | Numeric annotation matrix painted onto the reference | External BED or BED-like annotation files |
 | `GenotypePanel` | Reference-aligned PLINK genotype metadata with on-demand hardcall access | External PLINK 1 bfile prefix, either one bfile or an `@`-sharded prefix |
-| `Sumstats` | One aligned summary-statistics trait or source | External `.tsv.gz` with `chr`, `bp`, `a1`, `a2`, `p`, and optional columns such as `beta`, `se`, `z`, and `n` |
+| `Sumstats` | One aligned summary-statistics trait or source | External `.tsv.gz` with `chr`, `bp`, `a1`, `a2`, `p` (ID mode uses `SNP` instead of coordinates), and optional statistics |
 
 ## Input Layouts
 
@@ -82,9 +84,13 @@ strand should be resolved upstream by
 
 ## Allele Matching
 
-Results describe the reference panel's `a1` (ALT) allele. Loading automatically
-adjusts reversed SNP alleles. Swapping insertion/deletion alleles requires the
-`allow_indel_swaps` option.
+Results describe the reference panel's `a1` (ALT) allele. `match_by` selects
+the position (`"genomic_position"`, default) or marker ID (`"id"`) component of
+the key; both modes also require allele matching. Position mode accepts SNV
+swaps and opt-in indel swaps through `allow_indel_swaps`.
+
+ID mode matches SNVs other than A/T and C/G by case-sensitive marker ID,
+including strand complements.
 
 See the [allele matching guide](docs/ALLELE_MATCHING.md) for examples, allele
 roles, and genotype cache migration.
@@ -214,7 +220,7 @@ matrix representation is stored in `.mat` files.
 
 ### GenotypePanel
 
-- `load_genotype(bfile_prefix, reference, allow_indel_swaps=False)` loads PLINK 1
+- `load_genotype(bfile_prefix, reference, allow_indel_swaps=False, match_by="genomic_position")` loads PLINK 1
   genotype metadata and aligns it to a `ReferencePanel`. `bfile_prefix` may be a single prefix or an
   `@`-sharded prefix.
 - `panel.fetch_genotypes(snp_indices)` returns selected genotype calls without
@@ -225,7 +231,7 @@ matrix representation is stored in `.mat` files.
 - `panel.fetch_genotypes_int8(snp_indices)` returns selected hardcalls as compact
   integer calls.
 - `panel.is_present` is a boolean mask in reference coordinates for variants
-  present after alignment; `panel.is_allele_swapped` marks accepted swaps.
+  present after alignment; `panel.is_allele_swapped` marks count inversions.
 - `panel.fid`, `panel.iid`, `panel.sex`, `panel.is_male`, and
   `panel.is_female` expose sample metadata.
 - `panel.save_cache(path)` and `load_genotype_cache(...)` save and reload
@@ -233,7 +239,7 @@ matrix representation is stored in `.mat` files.
 
 ### Sumstats
 
-- `load_sumstats(path, reference, allow_indel_swaps=False)` loads a `.tsv.gz`
+- `load_sumstats(path, reference, allow_indel_swaps=False, match_by="genomic_position")` loads a `.tsv.gz`
   summary-statistics file using the [allele matching policy](#allele-matching).
 - Input files require `p`; `z` and `n` are optional and warn when absent or
   incomplete. Common aliases such as `POS`, `EffectAllele`, and `OtherAllele`

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Sumstats and genotype loaders accept `match_by="id"` to match SNVs other than
+  A/T and C/G by marker ID and alleles instead of position, including across strands.
+
 ## [0.4.1] - 2026-11-07
 
 ### Changed

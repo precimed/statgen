@@ -140,7 +140,8 @@ annotations <- union_annotations(
 genotype <- load_genotype("source/genotypes/chr@", reference)
 ```
 
-To enable indel swaps when loading your data:
+The loaders above use `match_by = "genomic_position"` by default. To enable
+indel swaps when loading your data:
 
 ```r
 trait_a <- load_sumstats("source/sumstats/trait_a.tsv.gz", reference,
@@ -148,6 +149,18 @@ trait_a <- load_sumstats("source/sumstats/trait_a.tsv.gz", reference,
 genotype <- load_genotype("source/genotypes/chr@", reference,
                           allow_indel_swaps = TRUE)
 ```
+
+For marker-ID and allele matching, use `match_by = "id"` with indel swaps
+disabled:
+
+```r
+trait_a <- load_sumstats("source/sumstats/trait_a.tsv.gz", reference, match_by = "id")
+genotype <- load_genotype("source/genotypes/chr@", reference, match_by = "id")
+```
+
+ID mode accepts non-palindromic SNVs and matches IDs case-sensitively. Sumstats
+require `SNP`, the allele columns, and `P`, ignore coordinates, and search all
+source rows. Genotypes search only the corresponding chromosome.
 
 See the [allele matching guide](ALLELE_MATCHING.md), or `?allele_matching` in R,
 for the loading options and how results are adjusted.

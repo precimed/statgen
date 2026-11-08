@@ -119,8 +119,11 @@ MAT_CACHE="derived/matlab_cache"
 SCRATCH="scratch/ld_build"
 ```
 
-Prepare inputs so genome build, chromosome names, and DNA strand agree across
-files before using `statgen`.
+The examples below use `match_by="genomic_position"` (the default). Prepare
+inputs so genome build, chromosome names, and DNA strand agree across files.
+For eligible SNVs with shared marker IDs, see
+[ID matching](ALLELE_MATCHING.md#id-matching); it does not change how LD or
+annotations align to the reference.
 
 Summary-statistics files must contain `chr`, `bp`, `a1`, `a2`, and `p` columns.
 The `p` column is required, but empty fields, `NA`, and `NaN` are accepted as
@@ -268,8 +271,21 @@ trait_a.save_cache(cache_root / "trait_a.sumstats.npz")
 genotype.save_cache(cache_root / "genotype.npz")
 ```
 
-See the [allele matching guide](ALLELE_MATCHING.md) for when to enable this
-option and [cache migration](ALLELE_MATCHING.md#genotype-caches-and-bed-overrides) for
+To use marker IDs and alleles instead of positions, load each source with
+`match_by="id"` before saving its cache:
+
+```python
+trait_a = load_sumstats("source/sumstats/trait_a.tsv.gz", reference, match_by="id")
+genotype = load_genotype("source/genotypes/chr@", reference, match_by="id")
+```
+
+ID mode requires non-palindromic SNVs and case-sensitive shared IDs. Sumstats
+require `SNP`, the allele columns, and `P`, ignore coordinates, and search all
+source rows; genotypes search only the corresponding chromosome. Keep
+`allow_indel_swaps=False` in ID mode.
+
+See the [allele matching guide](ALLELE_MATCHING.md) for the matching options
+and [cache migration](ALLELE_MATCHING.md#genotype-caches-and-bed-overrides) for
 existing genotype caches.
 
 The original BED files must still be available when later fetching genotype
@@ -352,7 +368,19 @@ trait_a.save_cache(fullfile(mat_cache, 'trait_a.sumstats.mat'));
 genotype.save_cache(fullfile(mat_cache, 'genotype.mat'));
 ```
 
-See the [allele matching guide](ALLELE_MATCHING.md) for details.
+For marker-ID and allele matching, use `'match_by', 'id'` on each source load
+instead, with indel swaps left disabled:
+
+```matlab
+trait_a = statgen.load_sumstats('source/sumstats/trait_a.tsv.gz', reference, ...
+    'match_by', 'id');
+genotype = statgen.load_genotype('source/genotypes/chr@', reference, ...
+    'match_by', 'id');
+```
+
+See the [allele matching guide](ALLELE_MATCHING.md#id-matching) for eligibility,
+chromosome scope, and ambiguity handling. Save the resulting objects with the
+same cache calls shown above.
 
 ## Outputs
 

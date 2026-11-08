@@ -1,3 +1,7 @@
+# statgen 0.4.2
+
+* `load_sumstats()` and `load_genotype()` accept `match_by = "id"` to match SNVs other than A/T and C/G by case-sensitive marker ID and alleles instead of position, including strand complements. Sumstats ignore coordinates; genotypes match within the corresponding chromosome. See `?allele_matching` for ID eligibility and duplicate handling.
+
 # statgen 0.4.1
 
 * Long alleles, such as structural variants, are now matched on their first 1,000,000 bases instead of their first 150. `load_reference()`, `load_genotype()`, and `load_sumstats()` warn once per file if an allele is longer, and keep complete allele strings.

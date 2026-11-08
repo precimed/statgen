@@ -7,7 +7,8 @@ classdef GenotypePanel
 % A GenotypePanel stores sample metadata and SNP mappings aligned to a
 % ReferencePanel. Genotype calls are read lazily from PLINK BED files with
 % fetch_genotypes or fetch_genotypes_int8. Calls count reference a1 (ALT).
-% is_allele_swapped marks swaps and is false for exact matches and absent variants.
+% is_allele_swapped marks count inversions; strand complementation alone and
+% absent variants leave it false.
 %
 % FAM rows define the panel-level sample axis. For sharded genotype input,
 % loaded autosomal shards must have identical FAM rows and define that axis.
@@ -21,7 +22,7 @@ classdef GenotypePanel
 %   num_sample   Number of samples.
 %   fid, iid     Sample identifiers from FAM metadata.
 %   is_present   Logical vector marking SNPs present in the genotype source.
-%   is_allele_swapped  Logical vector marking swaps into reference orientation.
+%   is_allele_swapped  Logical vector marking inversions into reference orientation.
 %   ploidy_male, ploidy_female  Per-SNP ploidy metadata.
 %
 % Common methods:
