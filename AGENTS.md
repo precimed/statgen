@@ -8,6 +8,14 @@ Work from the repository root. Use the `Makefile` for common tasks (`make instal
 
 Follow `spec/SPEC.md` and all documents in `spec/` as the source of truth. Do not invent undocumented behavior. When spec and code disagree, align implementation to the spec unless explicitly instructed otherwise. If the spec appears internally inconsistent, invalid, or unsafe to implement as written, stop and raise the concern instead of inventing implementation workarounds to satisfy it. Spec changes should prioritize minimalism and no duplication — say a thing once, in the most appropriate document.
 
+## Specifications and implementation plans
+
+Specs record durable behavior, interfaces, invariants, and performance requirements, including implementation constraints that materially determine correctness, memory, runtime, or cross-runtime compatibility. Keep rollout steps and implementation status out of specs.
+
+Implementation plans (in `dev/`, untracked) are disposable. Keep them concise: scope across runtimes, tests, user docs, and changelog; execution order; and proposed commits with a review gate after each stage — do not proceed until the stage is reviewed. Proposed commits are not authorization to commit (see Commits).
+
+Plans reference the specs instead of restating them, recording only non-obvious details or one-time validation an implementer could not infer.
+
 ## Change discipline
 
 Prefer minimal, surgical edits. Avoid unrelated refactors, formatting churn, and public-interface changes unless required. Keep I/O separate from core logic. Preserve existing module organization.
