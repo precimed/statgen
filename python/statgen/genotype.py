@@ -597,13 +597,12 @@ def _map_chrx_subjects(chrx_fam: pd.DataFrame, panel_fam: pd.DataFrame, where: s
 
 
 def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subject_row0, allow_indel_swaps, id_match=None) -> GenotypeShard:
-    source_bim = source.bim.loc[source.bim["chr"] == ref_shard.label]
-    is_allele_swapped = np.zeros(int(ref_shard.num_snp), dtype=bool)
     if id_match is not None:
         source_bim = source.bim
         local_match, is_allele_swapped = id_match
-    elif source_bim.empty:
+    elif (source_bim := source.bim.loc[source.bim["chr"] == ref_shard.label]).empty:
         local_match = np.full(int(ref_shard.num_snp), -1, dtype=np.int64)
+        is_allele_swapped = np.zeros(int(ref_shard.num_snp), dtype=bool)
     else:
         ref_keys = numeric_variant_keys(ref_shard.bp, ref_shard.a1_hash64, ref_shard.a2_hash64)
         src_keys = numeric_variant_keys(

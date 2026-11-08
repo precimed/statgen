@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 
 from ._utils import _validate_allow_indel_swaps, allele_hash64, _is_single_nucleotide_variant, _is_strand_ambiguous
-from ._variant_match import numeric_variant_keys
 from ._verbosity import info
 
 
@@ -80,8 +79,9 @@ def match_id_panel(reference, sources, *, chromosome_scope=False):
     ref_codes, src_codes = codes[:ri.size], codes[ri.size:]
     ref_groups = groups(ref_a1[ri], ref_a2[ri])
     src_groups = groups(src_a1[si], src_a2[si])
-    # Reuse the numeric tuple layout as (ID code, allele group, chromosome code).
-    ref_keys = numeric_variant_keys(ref_codes, ref_groups, np.zeros(ri.size, dtype=np.uint64))
+    # Pack keys into int64: (ID code, allele group), plus chromosome below.
+    n_codes = int(codes.max()) + 1 if codes.size else 1
+    ref_keys = ref_codes.astype(np.int64) * 2 + ref_groups
     _, inverse, counts = np.unique(ref_keys, return_inverse=True, return_counts=True)
     duplicates = counts[inverse] > 1
     if duplicates.any():
@@ -94,14 +94,15 @@ def match_id_panel(reference, sources, *, chromosome_scope=False):
     swapped = np.zeros(reference.num_snp, dtype=bool)
     if not ri.size or not si.size:
         return rows, swapped
-    src_keys = numeric_variant_keys(src_codes, src_groups, np.zeros(si.size, dtype=np.uint64))
+    src_keys = src_codes.astype(np.int64) * 2 + src_groups
     if chromosome_scope:
         # Reference ambiguity is assessed above, without chromosome in the key.
-        ref_chr = np.concatenate([np.full(s.num_snp, i) for i, s in enumerate(reference.shards)])
-        src_chr = labels.get_indexer(np.concatenate([s[4] for s in sources]))
-        ref_keys["a2_hash64"] = ref_chr[ri] + 1
-        src_keys["a2_hash64"] = src_chr[si] + 1
-    order = np.argsort(src_keys, kind="mergesort")
+        # (chr + 1, ID code, group) stays far below 2**63 for supported contigs.
+        ref_chr = np.concatenate([np.full(s.num_snp, i, dtype=np.int64) for i, s in enumerate(reference.shards)])
+        src_chr = labels.get_indexer(np.concatenate([s[4] for s in sources])).astype(np.int64)
+        ref_keys += (ref_chr[ri] + 1) * (2 * n_codes)
+        src_keys += (src_chr[si] + 1) * (2 * n_codes)
+    order = np.argsort(src_keys, kind="stable")
     sorted_keys = src_keys[order]
     left = np.searchsorted(sorted_keys, ref_keys, side="left")
     right = np.searchsorted(sorted_keys, ref_keys, side="right")
