@@ -118,6 +118,17 @@ classdef ReferenceShard
             [~, out] = statgen.internal.variant_hash_masks(obj.a1_hash64, obj.a2_hash64);
         end
 
+        function [rows, names, n_missing, n_invalid] = id_matching_names(obj, eligible)
+            % Internal matching path preserves packed cache IDs.
+            if obj.is_text_cache
+                values = obj.snp_text;
+            else
+                values = obj.snp_data;
+            end
+            [rows, names, n_missing, n_invalid] = statgen.internal.id_name_matrix( ...
+                values, obj.num_snp, eligible, obj.is_text_cache);
+        end
+
         function [snp_text, a1_text, a2_text] = cache_text_payloads(obj)
         %CACHE_TEXT_PAYLOADS Return per-shard newline-delimited cache strings.
             if obj.is_text_cache

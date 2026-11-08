@@ -2,72 +2,76 @@ function sumstats = load_sumstats(path, reference, varargin)
 %LOAD_SUMSTATS Load summary statistics aligned to a ReferencePanel.
 %
 %   sumstats = statgen.load_sumstats(path, reference)
-%   sumstats = statgen.load_sumstats(path, reference, 'allow_indel_swaps', true)
+%   sumstats = statgen.load_sumstats(path, reference, 'match_by', 'id')
 %
-% SNV swaps are automatic; indel swaps are opt-in. Values are oriented to the
-% reference panel's a1 (ALT) allele. See the guide for details:
-% https://github.com/precimed/statgen/blob/HEAD/docs/ALLELE_MATCHING.md
+% Loads one TSV or TSV.GZ file and returns a Sumstats object in reference order.
+% Position mode requires chr, bp, a1, a2, p; ID mode requires SNP, a1, a2, p
+% and ignores coordinates. Names are case-insensitive; POS, EffectAllele, and
+% OtherAllele are accepted aliases for bp, a1, and a2.
 %
-% Loads one TSV or TSV.GZ summary-statistics file for one trait or source; this
-% input is not sharded. Rows are aligned to reference SNPs by chromosome,
-% base-pair position, and alleles. The output is a Sumstats object with
-% SNP-axis vectors in reference order.
+% match_by selects the position ('genomic_position', default) or marker ID
+% component of the key; both modes also require allele matching. Values are
+% oriented to reference a1 (ALT). Position mode accepts SNV swaps and opt-in
+% 'allow_indel_swaps', true. ID mode accepts non-palindromic SNVs, including
+% strand complements, and matches IDs exactly and case-sensitively across
+% all source rows and the supplied reference panel.
 %
-% Required columns: chr, bp, a1, a2, p. Optional columns include z, n, beta,
-% se, eaf, and info.
-% Column names are case-insensitive; POS, EffectAllele, and OtherAllele are
-% accepted aliases for bp, a1, and a2. SNP may be present but is not used for
-% matching.
+% Missing-p rows are validated, then dropped. Unmatched slots have NaN logpvec
+% and is_present false. Absent optional statistics return []. For large gzip
+% inputs, STATGEN_SCRATCH controls temporary decompression storage.
 %
-% Rows with missing p (empty, NA, or NaN) are validated, then dropped before
-% matching. At info verbosity the loader reports the number dropped.
-% Rows are projected into reference order. Variants absent from the source have
-% NaN logp values and is_present false. p == 0 is allowed and becomes Inf in
-% logpvec. Optional columns absent from the source return [] in MATLAB.
-%
-% For large .tsv.gz inputs, set STATGEN_SCRATCH env variable to control where 
-% temporary decompressed files are created.
+% Matching details: https://github.com/precimed/statgen/blob/HEAD/docs/ALLELE_MATCHING.md
 %
 % See also statgen.Sumstats, statgen.load_sumstats_cache,
 % statgen.save_sumstats_cache.
     if nargin < 2
         error('statgen:arg', 'load_sumstats requires path and reference');
     end
-    allow_indel_swaps = statgen.internal.parse_allow_indel_swaps(varargin{:});
+    [allow_indel_swaps, match_by] = statgen.internal.parse_matching_options(varargin{:});
     path = char(path);
     if isempty(path)
         error('statgen:arg', 'path must be non-empty');
     end
 
-    [tbl, cleanup_fn] = parse_sumstats_table_(path);
+    [tbl, cleanup_fn] = parse_sumstats_table_(path, match_by);
     cleaner = onCleanup(cleanup_fn);
-    sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps);
+    sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps, match_by);
     clear cleaner;
 end
 
-function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
+function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps, match_by)
     if is_table_like_(tbl)
         var_names = canonicalize_var_names_(tbl.Properties.VariableNames, path);
     else
         var_names = canonicalize_var_names_(tbl.statgen_var_names__(:)', path);
     end
-    required = {'chr', 'bp', 'a1', 'a2', 'p'};
+    id_mode = strcmp(match_by, 'id');
+    required = {'a1', 'a2', 'p'};
+    if id_mode
+        required = [required, {'snp'}];
+    else
+        required = [required, {'chr', 'bp'}];
+    end
     for i = 1:numel(required)
         if ~any(strcmp(var_names, required{i}))
             error('statgen:sumstats', '%s: missing required column: %s', path, required{i});
         end
     end
 
-    chr_col = ensure_cellstr_col_(get_col_(tbl, var_names, 'chr'));
-    bp_num  = require_numeric_col_(get_col_(tbl, var_names, 'bp'));
     a1_col  = ensure_cellstr_col_(get_col_(tbl, var_names, 'a1'));
     a2_col  = ensure_cellstr_col_(get_col_(tbl, var_names, 'a2'));
     p_num   = require_numeric_col_(get_col_(tbl, var_names, 'p'));
-    source_line = (2:(numel(chr_col) + 1))';
-
-    keep_chr = statgen.internal.validate_variant_chr_labels(chr_col, path, 1, 'statgen:sumstats');
-    chr_col = chr_col(keep_chr);
-    bp_num = bp_num(keep_chr);
+    source_line = (2:(numel(p_num) + 1))';
+    if id_mode
+        ids = ensure_cellstr_col_(get_col_(tbl, var_names, 'snp'));
+        keep_chr = true(numel(p_num), 1);
+    else
+        chr_col = ensure_cellstr_col_(get_col_(tbl, var_names, 'chr'));
+        bp_num = require_numeric_col_(get_col_(tbl, var_names, 'bp'));
+        keep_chr = statgen.internal.validate_variant_chr_labels(chr_col, path, 1, 'statgen:sumstats');
+        chr_col = chr_col(keep_chr);
+        bp_num = bp_num(keep_chr);
+    end
     a1_col = a1_col(keep_chr);
     a2_col = a2_col(keep_chr);
     p_num = p_num(keep_chr);
@@ -90,10 +94,12 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
         error('statgen:sumstats', '%s: row %d: a2 must be uppercase DNA bases (A/C/G/T): %s', path, source_line(i), a2_col{i});
     end
 
-    bad_bp = ~isfinite(bp_num) | (bp_num ~= floor(bp_num));
-    if any(bad_bp)
-        i = find(bad_bp, 1, 'first');
-        error('statgen:sumstats', '%s: row %d: bp is not an integer', path, source_line(i));
+    if ~id_mode
+        bad_bp = ~isfinite(bp_num) | (bp_num ~= floor(bp_num));
+        if any(bad_bp)
+            i = find(bad_bp, 1, 'first');
+            error('statgen:sumstats', '%s: row %d: bp is not an integer', path, source_line(i));
+        end
     end
 
     bad_p = ~isnan(p_num) & (~isfinite(p_num) | p_num < 0 | p_num > 1);
@@ -132,8 +138,12 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
         statgen.internal.verbosity_state('info', ...
             sprintf('%s: dropped %d row(s) with missing p', path, sum(~keep_p)));
     end
-    chr_col = chr_col(keep_p);
-    bp_num = bp_num(keep_p);
+    if id_mode
+        ids = ids(keep_p);
+    else
+        chr_col = chr_col(keep_p);
+        bp_num = bp_num(keep_p);
+    end
     p_num = p_num(keep_p);
     src_a1_hash64 = src_a1_hash64(keep_p);
     src_a2_hash64 = src_a2_hash64(keep_p);
@@ -143,6 +153,15 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
             vals = optional_map.(nm);
             optional_map.(nm) = vals(keep_p);
         end
+    end
+
+    if id_mode
+        source.context = path;
+        source.ids = ids;
+        source.a1 = src_a1_hash64;
+        source.a2 = src_a2_hash64;
+        source.chr = {};
+        [id_rows, id_swapped] = statgen.internal.match_id_panel(reference, {source}, false);
     end
 
     p_aligned = nan(n_ref, 1);
@@ -161,15 +180,21 @@ function sumstats = build_sumstats_(tbl, reference, path, allow_indel_swaps)
         s_ref = reference.shards{i};
         off = reference.shard_offsets(i);
         ix = (off.start0 + 1):off.stop0;
-        src_idx = find(strcmp(chr_col, s_ref.label));
-        [loc, swapped, n_strand_ambiguous, n_disabled_indels] = statgen.internal.match_shard_numeric( ...
-            s_ref.bp, s_ref.a1_hash64, s_ref.a2_hash64, ...
-            bp_num(src_idx), src_a1_hash64(src_idx), src_a2_hash64(src_idx), ...
-            s_ref.label, 'sumstats', allow_indel_swaps);
-        statgen.internal.report_variant_swaps(path, s_ref.label, sum(swapped), n_strand_ambiguous, n_disabled_indels);
+        if id_mode
+            loc = id_rows(ix);
+            swapped = id_swapped(ix);
+            matched_src_ix = loc(loc > 0);
+        else
+            src_idx = find(strcmp(chr_col, s_ref.label));
+            [loc, swapped, n_strand_ambiguous, n_disabled_indels] = statgen.internal.match_shard_numeric( ...
+                s_ref.bp, s_ref.a1_hash64, s_ref.a2_hash64, ...
+                bp_num(src_idx), src_a1_hash64(src_idx), src_a2_hash64(src_idx), ...
+                s_ref.label, 'sumstats', allow_indel_swaps);
+            statgen.internal.report_variant_swaps(path, s_ref.label, sum(swapped), n_strand_ambiguous, n_disabled_indels);
+            matched_src_ix = src_idx(loc(loc > 0));
+        end
         has_match = loc > 0;
         matched_ref_ix = ix(has_match);
-        matched_src_ix = src_idx(loc(has_match));
 
         p_aligned(matched_ref_ix) = p_num(matched_src_ix);
         swapped_ix = ix(swapped);
@@ -235,7 +260,7 @@ function var_names = canonicalize_var_names_(raw_names, path)
     end
 end
 
-function [tbl, cleanup_fn] = parse_sumstats_table_(path)
+function [tbl, cleanup_fn] = parse_sumstats_table_(path, match_by)
     cleanup_fn = @() [];
     actual_path = path;
     cleanup_guard = [];
@@ -259,8 +284,10 @@ function [tbl, cleanup_fn] = parse_sumstats_table_(path)
         error('statgen:sumstats', 'sumstats file is empty: %s', path);
     end
     names = strsplit(hdr, '\t');
-    fmt = build_col_formats_(names);
+    canonical = canonicalize_var_names_(names, path);
+    [fmt, selected] = build_col_formats_(canonical, match_by);
     cols = scan_sumstats_cols_(fid, fmt);
+    names = names(selected);
     clear closer;
     validate_col_lengths_(cols, path);
     S = struct();
@@ -350,12 +377,20 @@ function tf = ends_with_(s, suffix)
     tf = length(s) >= n && strcmp(s(end - n + 1:end), suffix);
 end
 
-function fmt = build_col_formats_(raw_names)
-    numeric = is_numeric_sumstats_col_(raw_names);
-    parts = repmat({'%s'}, 1, numel(raw_names));
-    for i = find(numeric)
-        parts{i} = '%f';
+function [fmt, selected] = build_col_formats_(names, match_by)
+    numeric_names = {'p', 'z', 'n', 'beta', 'se', 'eaf', 'info'};
+    string_names = {'a1', 'a2'};
+    if strcmp(match_by, 'id')
+        string_names{end + 1} = 'snp';
+    else
+        numeric_names{end + 1} = 'bp';
+        string_names{end + 1} = 'chr';
     end
+    numeric = ismember(names, numeric_names);
+    selected = numeric | ismember(names, string_names);
+    parts = repmat({'%*s'}, 1, numel(names));
+    parts(selected & ~numeric) = {'%s'};
+    parts(numeric) = {'%f'};
     fmt = strjoin(parts, '');
 end
 
@@ -367,15 +402,6 @@ function cols = scan_sumstats_cols_(fid, fmt)
         'ReturnOnError', false, ...
         'EmptyValue', NaN, ...
         'TreatAsEmpty', {'NA', 'na', 'N/A', '.', 'NaN', 'nan', 'Inf', 'inf'});
-end
-
-function tf = is_numeric_sumstats_col_(raw_names)
-    names = lower(raw_names);
-    numeric_names = {'bp', 'pos', 'p', 'z', 'n', 'beta', 'se', 'eaf', 'info'};
-    tf = false(1, numel(names));
-    for i = 1:numel(names)
-        tf(i) = any(strcmp(names{i}, numeric_names));
-    end
 end
 
 function validate_col_lengths_(cols, path)
