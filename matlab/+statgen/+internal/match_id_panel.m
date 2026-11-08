@@ -96,7 +96,9 @@ function [rows, swapped] = match_id_panel(reference, sources, chromosome_scope)
         src_keys = src_chr(si) * (n_codes * 2) + src_keys;
     end
     [hit, loc] = ismember(src_keys, ref_keys);
-    counts = accumarray(loc(hit), 1, [numel(ri), 1]);
+    matched = loc(hit);
+    % Scalar logical indexing can return 0x0 in MATLAB; accumarray needs a column.
+    counts = accumarray(matched(:), 1, [numel(ri), 1]);
     if any(counts > 1)
         slot = find(counts > 1, 1, 'first');
         source_row = si(find(hit & loc == slot, 1, 'first'));
