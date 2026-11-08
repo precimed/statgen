@@ -71,11 +71,10 @@ over that byte sequence, encoded as a lowercase hexadecimal string. The checksum
 identifies row order, contig naming, position, and allele orientation for
 alignment checks; it is not a security primitive.
 
-Each variant also has fixed-width allele identity hashes for
-sumstats-to-reference matching, which is the fast object-alignment path that
-needs exact variant identity. Chromosome identity is supplied by the shard
-label, and base-pair position is already stored as a numeric vector, so only the
-variable-length allele strings need compact hashed representations.
+Each variant also has fixed-width allele identity hashes for source-to-reference
+matching. Genomic-position matching combines them with the shard label and
+numeric base-pair position; ID matching combines allele identity with marker
+IDs under the contract below.
 
 `a1_hash64` and `a2_hash64` are `uint64` vectors, length `num_snp`, computed
 from allele strings as loaded, using a capped prefix. The cap, warning policy,
@@ -120,14 +119,22 @@ signed 64-bit representation.
 
 ## Source-to-reference matching
 
+`load_sumstats` and `load_genotype` accept `match_by="genomic_position"`
+(default) or `"id"` (MATLAB/Octave: `'match_by', 'id'`). Other values are errors.
+Both modes project source rows onto the supplied reference axis, preserve
+reference data and row order, and orient values to reference `a1`. Each source
+row fills at most one reference slot; unmatched or excluded reference slots
+remain missing. Compatibility checks use the orientation-sensitive
+`reference_checksum`, independently of the matching mode. Neither mode performs
+liftover or verifies variant identity against an external database.
+
+### Genomic-position matching
+
 An exact match requires the same chromosome and position, with the source
 effect allele (sumstats) or counted allele (genotypes) matching reference `a1`
 (ALT), and the source other or non-counted allele matching reference `a2` (REF).
 `load_sumstats` and `load_genotype` implement this using `(shard label, bp,
-a1_hash64, a2_hash64)`; marker IDs are ignored. Reference validation follows
-[contigs-and-shards.md](contigs-and-shards.md#duplicate-key-validation).
-Compatibility checks use the orientation-sensitive `reference_checksum`, not
-allele hashes; hash collisions are assumed negligible for non-adversarial inputs.
+a1_hash64, a2_hash64)`; marker IDs are ignored.
 
 Source order is not relevant. Match in two passes:
 
@@ -165,12 +172,109 @@ and shard:
 These counts are informational, not warnings, and are suppressed at `quiet`.
 Unused reciprocal rows superseded by exact matches are not reported.
 
-Matching, swap eligibility, and `A/T`/`C/G` classification must use allele
+#### Reference duplicate-key validation
+
+Reference source loading rejects duplicate ordered `(chr, bp, a1_hash64,
+a2_hash64)` keys and reciprocal SNV keys: two distinct single-base alleles in
+reversed order at the same chromosome and position. Validation covers the
+selected shards; validation outside that set is implementation-dependent.
+Reciprocal multi-base keys remain distinct ordered keys. These checks belong
+to `load_reference`; cache-loaded references are trusted and matching does not
+repeat this source validation. ID-mode eligibility below is assessed separately
+when ID matching is requested, including for cache-loaded references.
+
+### ID matching
+
+ID matching uses marker ID plus allele identity, not genomic position. Users
+must supply IDs identifying the same biological variants across inputs; IDs
+are arbitrary strings, not restricted to rsIDs. Shared genome build and strand
+are not required, but matching does not verify these ID assignments. Sumstats
+coordinate handling and genotype chromosome search scope are specified in
+[sumstats.md](sumstats.md) and [genotype.md](genotype.md).
+
+#### Eligibility and allele equivalence
+
+An eligible variant has two distinct single-base alleles from `A/C/G/T`,
+excluding the palindromic pairs `A/T` and `C/G`. All multi-base variants are
+ineligible, even for exact ordered matches. `allow_indel_swaps=true` with
+`match_by="id"` is an error.
+
+An eligible ID contains 1–32 printable, non-whitespace ASCII characters
+(bytes `0x21`–`0x7e`), other than the explicit placeholder `.`. Empty/missing
+IDs, overlength IDs, and IDs containing other characters are ineligible.
+`NA` and `0` are ordinary IDs. Compare IDs exactly and case-sensitively,
+without trimming, normalization, truncation, substituting hash equality for
+exact ID equality, or coordinate fallback.
+These restrictions affect ID matching only; stored IDs remain unchanged.
+
+Two eligible allele pairs are equivalent under allele exchange, strand
+complementation (`A`↔`T`, `C`↔`G`), or both. For example, `A/G`, `G/A`, `T/C`,
+and `C/T` form one allele equivalence group. An ID matching key consists of the
+ID and this group. `rs123:A:G` and `rs123:A:C` have distinct keys and may coexist.
+
+#### Reference and source ambiguity
+
+At each ID-mode load, assess eligible reference keys across the entire supplied
+reference panel, including all selected shards. If multiple reference rows have
+the same key, exclude every row in that group from ID matching and warn. This
+does not invalidate or modify the reference. Excluded slots cannot be populated
+by source rows. Subsetting before loading defines the assessment scope; no
+capability flag or eligibility state is persisted on the reference or in caches.
+
+Match eligible source rows against the remaining reference slots within the
+loader's search scope. A unique candidate fills its slot. Multiple source rows
+for the same matchable slot are an ambiguity error, even if their values agree.
+All four equivalent allele representations compete equally: there is no
+exact-match priority or ordered fallback. Source duplicates that cannot
+populate any eligible reference slot require no ambiguity check. Sumstats
+missing-P filtering precedes candidate counting as specified in
+[sumstats.md](sumstats.md).
+
+#### Orientation and diagnostics
+
+For an eligible ID-mode match, values need count/effect inversion exactly when
+source `a1`, or its strand complement, equals reference `a2`. For example,
+relative to reference `A/G`, source `A/G` or `T/C` needs no inversion, while
+`G/A` or `C/T` does. Apply the existing sumstats and genotype inversion rules
+in their respective specs. Source and reference allele strings are not rewritten.
+
+Report nonzero counts of excluded palindromic SNVs and multi-base variants at
+`info`, separately for source and reference. Warn about unusable IDs among
+otherwise eligible variants, reporting missing/empty/`.` IDs separately from
+overlength or invalid-character IDs. Reference-ambiguity warnings report the
+number of excluded slots and duplicate key groups. Source exclusion counts use
+rows remaining after missing-P filtering for sumstats. Reports identify the
+source file or reference panel as appropriate. At `info`, report nonzero
+per-source-file counts of matched rows requiring inversion and strand
+complementation; rows requiring both contribute to both counts. Information
+is suppressed at `quiet`, while warnings remain warnings.
+
+### Matching representation and performance
+
+Allele matching, swap eligibility, and `A/T`/`C/G` classification must use allele
 hashes only, without decoding or inspecting allele strings. Single-base
 alleles are identified by comparing hashes with the hashes of `A`, `C`, `G`,
 and `T`, computed with the hash function above. Matching must preserve all
 64 bits of allele hashes, use native numeric operations, and avoid composite
-string keys.
+ID/allele or coordinate/allele string keys; hash collisions are assumed
+negligible for non-adversarial allele inputs.
+
+MATLAB/Octave ID matching uses temporary space-padded `N×W` character matrices
+for exact marker-name comparisons, with a shared width
+`W = min(32, max_marker_name_length)` over the reference and source IDs being
+compared. Exclude overlength and otherwise ineligible IDs before copying into
+the matrices; never truncate them. Empty eligible sets require no lookup.
+For cache-loaded references, construct these matrices directly from the packed
+newline-delimited ID payloads without materializing per-ID cell arrays.
+Use native/vectorized operations and bounded conversion workspace rather than
+an unbounded expansion of character indices. Python and R may use native
+exact-string matching representations with identical results.
+
+ID matching may materialize ID lookup structures, but must not decode allele
+strings or add ID decoding or lookup costs to genomic-position matching.
+Reference, genotype, and sumstats cache layouts remain unchanged: caches retain
+original reference strings or the resulting aligned values, mappings, and
+orientation, not the matching mode or temporary lookup structures.
 
 Regardless of how the panel is sharded, callers access genome-wide vectors and
 matrices through read-only panel-level accessors that concatenate across shards

@@ -282,8 +282,10 @@ Tests should also cover:
 
 ## Allele swap matching
 
-Python, MATLAB/Octave, and R tests must cover the matching policy in
-[reference.md](reference.md#source-to-reference-matching):
+Python, MATLAB/Octave, and R tests must cover both matching modes in
+[reference.md](reference.md#source-to-reference-matching), including identical
+ID-mode exclusions, ambiguity decisions, orientation, and cache round-trips.
+The following cases describe genomic-position matching:
 
 - exact and reversed SNV source alleles aligned to a reference following the
   REF/ALT contract, including `A/T` and `C/G`, reference-order output, and
@@ -314,6 +316,19 @@ Python, MATLAB/Octave, and R tests must cover the matching policy in
 - numeric matching preserving all 64 hash bits without lazy allele-string
   decoding.
 
+ID-mode coverage must also include:
+
+- palindromic and multi-base exclusions, including exact multi-base matches;
+- all four allele orientations, distinct equivalence groups under one ID,
+  and the resulting value transformations and diagnostic counts;
+- panel-wide reference-key exclusions, including cross-chromosome duplicates,
+  and source ambiguity even when candidate values agree;
+- unusable IDs at length and character boundaries, literal `NA` and `0` IDs,
+  and exact case-sensitive comparison;
+- missing-P filtering before candidate counting, ignored or absent sumstats
+  coordinates, and genotype chromosome scope;
+- invalid matching modes and incompatible `allow_indel_swaps` settings.
+
 ## Success criteria
 
 The library is complete when univariate LDSC-style preparation and bivariate
@@ -328,4 +343,5 @@ workflows.
 ## Test boundaries
 
 Tests should cover `statgen` behavior, not upstream harmonization. Input test
-fixtures should already satisfy the reference-genome and allele contract.
+fixtures should satisfy the assumptions of the selected matching mode and the
+shared allele-syntax contract.

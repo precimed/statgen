@@ -83,7 +83,8 @@ not saved by genotype cache APIs.
 
 ## Loading and alignment
 
-`load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false)`
+`load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false,
+optional match_by="genomic_position")`
 parses BIM, FAM, and optional PLOIDY
 metadata, then projects the source variant rows into the supplied
 `ReferencePanel` order. The result has the same shard structure and SNP axis as
@@ -91,8 +92,13 @@ metadata, then projects the source variant rows into the supplied
 
 Source-to-reference matching is defined in
 [reference.md](reference.md#source-to-reference-matching). Source `chr` must
-match the reference shard label exactly. Matching uses fixed-width allele
-hashes and does not normalize chromosome labels or repair strand issues.
+match the reference shard label exactly in both matching modes. ID mode replaces
+BP with the BIM marker ID, but searches only source rows on the corresponding
+chromosome, never across chromosome shards. This preserves source-file routing,
+sample reconciliation, and source ploidy handling; reference ID-key ambiguity
+is still assessed panel-wide under the shared contract. Genotype calls,
+including entirely missing calls, do not affect matching eligibility or
+candidate counting. Matching does not normalize chromosome labels.
 Source validation follows [contigs-and-shards.md](contigs-and-shards.md).
 
 `load_genotype` is a reference-driven projection from a possibly larger source.
@@ -113,8 +119,10 @@ The aligned variant-presence vector is:
   `0` means no source genotype row exists for that reference SNP.
 
 The aligned `is_allele_swapped` logical vector has the same full reference
-axis as `is_present`. It is true only for matched rows accepted by swap
-fallback, and false for exact matches and absent SNPs. It records allele
+axis as `is_present`. It is true only for matched rows requiring allele-count
+inversion under the shared matching contract. Strand complementation alone
+leaves it false, while strand complementation plus allele exchange makes it
+true. It is false for absent SNPs. It records allele
 orientation independently of whether any subject's hardcall is missing.
 
 Within this genotype spec, `num_snp` in public accessor shapes means the
@@ -333,7 +341,7 @@ this invariant. Writers emit `/0.2` and persist swap state. Loaders
 also accept `genotype_cache/0.1`, initializing all swap flags to false without
 reparsing sources or recomputing matches. Shard selection preserves the stored
 mapping and swap flags on the selected reference axis. Caches store the
-resulting orientation, not the `allow_indel_swaps` loading option.
+resulting orientation, not the `allow_indel_swaps` or `match_by` loading options.
 
 `ploidy_male` and `ploidy_female` are panel-wide numeric vectors with `NaN`
 for `is_present == false`.
@@ -464,7 +472,8 @@ error.
 ## API
 
 ```text
-load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false)
+load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false,
+              optional match_by="genomic_position")
     -> GenotypePanel
 save_genotype_cache(panel, path) -> void
 load_genotype_cache(path, optional shards) -> GenotypePanel
@@ -514,7 +523,8 @@ Expected behavior:
   FAM sample-axis reconciliation rules.
 - Matching follows the shared source-to-reference matching contract in
   [reference.md](reference.md#source-to-reference-matching). The loader does
-  not normalize chromosome labels or perform strand handling.
+  not normalize chromosome labels; ID-mode strand handling is limited to that
+  contract.
 - `GenotypePanel` does not expose `bim` as a public accessor. BIM is parsed
   only to align source rows to the reference and to construct internal
   `source_row0`.

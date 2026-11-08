@@ -81,11 +81,15 @@ API notation uses neutral data-shape terms:
 
 `statgen` starts after variant harmonization. Variant-bearing inputs are
 expected to have already passed through [`genomatch`](https://github.com/precimed/genomatch)
-or an equivalent upstream pipeline so they share one genome build,
-contig naming for chromosome labels, and strand. `statgen` does not normalize
+or an equivalent upstream pipeline so genomic-position matching inputs share
+one genome build, contig naming for chromosome labels, and strand.
+ID matching is a restricted exception for non-palindromic SNVs with consistent
+marker identity across inputs; its strand handling and eligibility rules are
+defined in [reference.md](reference.md#id-matching). `statgen` does not normalize
 chromosome labels, determine or verify REF alleles against a reference-genome
-FASTA sequence, liftover coordinates, or repair strand issues. Sumstats and genotype source loaders accept allele
-swaps under the matching contract in [reference.md](reference.md).
+FASTA sequence, or liftover coordinates. Sumstats and genotype source loaders
+accept allele exchanges and, in ID mode only, strand complements under that
+matching contract.
 
 Within the current contract, supported contigs are `1`-`22` and `X`.
 `statgen` currently does not depend on inputs to be in a specific reference genome,
@@ -110,17 +114,20 @@ the reference panel's ALT, and the other allele matches its REF.
 
 For alleles in genotype or sumstats that are reversed relative to the reference,
 loaders orient values using the shared
-[matching policy](reference.md#source-to-reference-matching), under the
-same-strand assumption. For indels, reversing allele roles can change the
-insertion/deletion interpretation. Users who set `allow_indel_swaps=true` on
+[matching policy](reference.md#source-to-reference-matching). Genomic-position
+matching assumes the same strand. For indels, reversing allele roles can change
+the insertion/deletion interpretation. Users who set `allow_indel_swaps=true` on
 `load_genotype` or `load_sumstats` take responsibility for interpreting reversed
 indel alleles as the same biological variant.
 
-Users establish genome build, strand, and reference alignment upstream.
+Users establish the genome-build, strand, and variant-identity assumptions
+required by their selected matching mode upstream.
 `statgen` neither requires nor reads a reference FASTA to verify REF identity.
 Both alleles are non-empty strings of uppercase DNA bases (`A`, `C`,
 `T`, `G`); either may be multi-base for indels. Loaders validate allele syntax
 and preserve values as-is without normalization or case conversion.
+Loaders reject identical alleles (`a1 == a2`) in both matching modes before
+matching eligibility is assessed.
 Alleles on supported contigs must satisfy this syntax contract. Validation
 of alleles on ignored contigs such as `Y` and `MT` is implementation-dependent;
 loaders need not add special handling for these rows.

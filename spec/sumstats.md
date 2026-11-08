@@ -20,13 +20,19 @@ Canonical sumstats TSV files are produced by `genomatch` or equivalent
 post-harmonization pipelines, not by `statgen`; `statgen` consumes these files
 for loading, alignment, and caching.
 
-Required columns:
+Required columns in the default `match_by="genomic_position"` mode:
 
 - `chr` or `CHR`
 - `bp` or `POS`
 - `a1` or `EffectAllele`
 - `a2` or `OtherAllele`
 - `p` or `P`
+
+In `match_by="id"` mode, `SNP`, the two allele columns, and `P` are required;
+`CHR` and `POS`/`bp` are optional. Supplied coordinate columns are ignored
+entirely, including their formatting, values, contig validation, and chromosome
+filtering. Ordinary file/header checks and allele/statistic validation still
+apply to every source row, including rows ineligible for ID matching.
 
 Allele roles follow [SPEC.md](SPEC.md). An explicit genomic `REF` column is
 not currently supported for allele interpretation or matching; source orientation is
@@ -48,19 +54,20 @@ Optional columns:
 Column recognition is case-insensitive. Apart from case, the recognized
 genomatch cleaned-sumstats names `POS`, `EffectAllele`, and `OtherAllele` map
 to internal fields `bp`, `a1`, and `a2`. Genomatch vmap-style `bp`, `a1`, and
-`a2` are accepted directly. `SNP` may be present but is not used for matching.
+`a2` are accepted directly. `SNP` is used only in ID mode and must retain literal
+ID strings, including `NA` and `0`, under the shared matching contract.
 Unrecognized extra columns are ignored.
 
 Logical column types:
 
 | Logical column | Required | Type |
 | --- | --- | --- |
-| `chr` | yes | string |
-| `bp` | yes | float-parsed integer |
+| `chr` | genomic-position mode only | string |
+| `bp` | genomic-position mode only | float-parsed integer |
 | `a1` | yes | string |
 | `a2` | yes | string |
 | `p` | yes | float |
-| `snp` | no | string |
+| `snp` | ID mode only | string |
 | `z` | no | float |
 | `n` | no | float |
 | `beta` | no | float |
@@ -68,18 +75,19 @@ Logical column types:
 | `eaf` | no | float |
 | `info` | no | float |
 
-`bp` is parsed as a numeric value and then validated to be integral. It is not
-parsed as a string on performance-sensitive paths. Empty fields, `NA`, and
-`NaN` are missing values in every numeric column and are represented as `NaN`
-after parsing. Implementations may accept additional missing-value spellings
+In genomic-position mode, `bp` is parsed as a numeric value and then validated
+to be integral. It is not parsed as a string on performance-sensitive paths.
+Empty fields, `NA`, and `NaN` are missing values in every numeric column and
+are represented as `NaN` after parsing. Implementations may accept additional missing-value spellings
 and may read infinities as missing; any other non-numeric value is a
-validation error. Missing `bp` is invalid.
+validation error. Missing `bp` is invalid in genomic-position mode.
 
 Implementations must parse numeric logical columns with native numeric TSV
 reader support where the runtime provides it. MATLAB/Octave readers therefore
-use `%f` textscan specifiers for `bp`, `p`, `z`, `n`, `beta`, `se`, `eaf`, and
-`info`, and `%s` for string columns. This avoids a default path that reads large
-numeric columns as strings and converts them later row by row. Python and R may
+use `%f` textscan specifiers for `bp` in genomic-position mode and for `p`, `z`,
+`n`, `beta`, `se`, `eaf`, and `info`, and `%s` for string columns. This avoids a
+default path that reads large numeric columns as strings and converts them
+later row by row. Python and R may
 use their language-native tabular readers and vectorized numeric conversion
 paths, provided they preserve the same logical column types and validation
 behavior.
@@ -90,21 +98,24 @@ Loading against a `ReferencePanel` projects rows into reference order under
 [the shared matching contract](reference.md#source-to-reference-matching).
 Source rows with missing `p` are validated like other rows, then dropped before
 matching; matching and the warning below use only the remaining rows.
-Validated source rows on canonical contigs outside the supplied reference
-shard set are ignored for alignment, such as `X` rows loaded against a
-chr1-only reference. Recognized non-supported contigs, invalid contig labels,
-and allele syntax follow the shared rules in
+In genomic-position mode, validated source rows on canonical contigs outside
+the supplied reference shard set are ignored for alignment, such as `X` rows
+loaded against a chr1-only reference. Recognized non-supported contigs, invalid
+contig labels, and allele syntax follow the shared rules in
 [contigs-and-shards.md](contigs-and-shards.md) and [SPEC.md](SPEC.md). The
 result is split into `SumstatsShard`s matching the reference shards, and
 variants absent from the TSV are represented as missing values. If a supplied
 reference shard has no matching source rows at all, the loader warns and
 represents that shard as all missing. The loader does not normalize or alias
-contig labels; matched sumstats `chr` values must already match the reference
-labels.
+contig labels; in genomic-position mode, matched sumstats `chr` values must
+already match the reference labels. In ID mode, source rows are searched across
+the entire supplied reference panel without coordinate-based partitioning.
 
-For a swapped match, negate source `z` and `beta`, and replace source `eaf`
+For a match requiring allele-count/effect inversion under the shared matching
+contract, negate source `z` and `beta`, and replace source `eaf`
 with `1 - eaf`. Leave `p`, `n`, `se`, and `info` unchanged. Preserve missing
-optional values and absent optional fields. Exact matches are unchanged.
+optional values and absent optional fields. A strand complement alone leaves
+values unchanged.
 `create_sumstats` accepts already reference-oriented vectors and does not
 perform matching or swaps. Sumstats objects store aligned values without a
 per-variant swap mask.
@@ -223,7 +234,8 @@ Missing optional fields use the language-specific sentinel defined in
 ## API
 
 ```text
-load_sumstats(path, reference, optional allow_indel_swaps=false) -> Sumstats
+load_sumstats(path, reference, optional allow_indel_swaps=false,
+              optional match_by="genomic_position") -> Sumstats
 save_sumstats_cache(sumstats, path)
 load_sumstats_cache(path, optional shards) -> Sumstats
 create_sumstats(reference, p, optional z, optional n, optional beta,
@@ -252,7 +264,8 @@ Expected behavior:
   genomatch cleaned-sumstats schema.
 - sumstats-to-reference matching follows the shared source-to-reference
   matching contract in [reference.md](reference.md#source-to-reference-matching).
-  The loader does not normalize chromosome labels or perform strand handling.
+  Chromosome labels are not normalized; ID-mode strand handling is limited to
+  that contract.
 - `p` follows the validation and missing-value rules above. Invalid values
   must fail load with a clear message. At `info` verbosity, `load_sumstats`
   reports the number of rows dropped for missing `p` when nonzero; `quiet`

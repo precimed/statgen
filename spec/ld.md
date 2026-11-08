@@ -342,7 +342,7 @@ exchange is not a goal.
 
 The builder constructs its reference from the same PLINK 1 bfile used to
 compute LD, through `load_reference` and its
-[reference validation](contigs-and-shards.md#duplicate-key-validation).
+[reference validation](reference.md#reference-duplicate-key-validation).
 PLINK output variants must match exactly one reference row by ordered
 `(chr, bp, a1, a2)` strings, without swap fallback. The builder must fail cleanly
 on any unmatched variant or ambiguity when matching LD correlations to the

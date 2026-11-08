@@ -41,21 +41,7 @@ loaders do not separately validate source row order or duplicate keys.
 Genotype BIM row order and ordered-key duplicate checks are
 implementation-dependent.
 
-## Duplicate-key validation
-
-Reciprocal SNV keys have the same chromosome and position, with two distinct
-single-base alleles in reversed order: for example, `a1=A, a2=G` and
-`a1=G, a2=A`.
-
-Reference source loading rejects duplicate ordered `(chr, bp, a1_hash64,
-a2_hash64)` keys and reciprocal SNV keys at the same coordinate. Validation
-covers the selected shards; validation outside that set is implementation-dependent.
-Reciprocal multi-base keys remain distinct ordered keys.
-
-These checks belong to `load_reference`. Cache-loaded references are trusted;
-source matching does not repeat reference validation.
-
-Source ambiguity is handled by the
+Reference duplicate-key validation and source ambiguity are defined by the
 [matching policy](reference.md#source-to-reference-matching), rather than a
 separate requirement to reject all source duplicate keys.
 
@@ -76,7 +62,8 @@ Sharded paths use `@` as the shard-label placeholder.
   LD panel; `load_ld_reference` errors if a requested shard is absent from the
   reference cache.
 
-Non-sharded single-file inputs are split by the `chr` column into
+Except for sumstats ID mode as defined in [sumstats.md](sumstats.md),
+non-sharded single-file inputs are split by the `chr` column into
 per-chromosome shards in canonical order. For source loaders with an explicit
 `reference` argument, the split is a reference-driven projection: validated
 source rows outside the supplied reference shard set are ignored for alignment.
