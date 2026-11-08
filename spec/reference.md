@@ -206,6 +206,8 @@ IDs, overlength IDs, and IDs containing other characters are ineligible.
 without trimming, normalization, truncation, substituting hash equality for
 exact ID equality, or coordinate fallback.
 These restrictions affect ID matching only; stored IDs remain unchanged.
+ID eligibility and equality apply to values returned by the existing source
+readers; quoting behavior remains unchanged.
 
 Two eligible allele pairs are equivalent under allele exchange, strand
 complementation (`A`↔`T`, `C`↔`G`), or both. For example, `A/G`, `G/A`, `T/C`,
@@ -243,7 +245,8 @@ Report nonzero counts of excluded palindromic SNVs and multi-base variants at
 otherwise eligible variants, reporting missing/empty/`.` IDs separately from
 overlength or invalid-character IDs. Reference-ambiguity warnings report the
 number of excluded slots and duplicate key groups. Source exclusion counts use
-rows remaining after missing-P filtering for sumstats. Reports identify the
+rows remaining after missing-P filtering for sumstats, and only rows on
+chromosomes in the supplied reference panel for genotypes. Reports identify the
 source file or reference panel as appropriate. At `info`, report nonzero
 per-source-file counts of matched rows requiring inversion and strand
 complementation; rows requiring both contribute to both counts. Information

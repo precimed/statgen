@@ -17,8 +17,9 @@ from ._bfile_utils import (
     _read_bed_rows_int8,
     _validate_bed,
 )
-from ._utils import _validate_allow_indel_swaps, allele_hash64, validate_requested_shards
+from ._utils import allele_hash64, validate_requested_shards
 from ._verbosity import report_variant_swaps
+from ._id_match import match_id_panel, validate_matching_options
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
 _CACHE_SCHEMA = "genotype_cache/0.2"
@@ -595,10 +596,13 @@ def _map_chrx_subjects(chrx_fam: pd.DataFrame, panel_fam: pd.DataFrame, where: s
     return subject_present, source_subject_row0
 
 
-def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subject_row0, allow_indel_swaps) -> GenotypeShard:
+def _build_shard(ref_shard, source: _SourceRecord, subject_present, source_subject_row0, allow_indel_swaps, id_match=None) -> GenotypeShard:
     source_bim = source.bim.loc[source.bim["chr"] == ref_shard.label]
     is_allele_swapped = np.zeros(int(ref_shard.num_snp), dtype=bool)
-    if source_bim.empty:
+    if id_match is not None:
+        source_bim = source.bim
+        local_match, is_allele_swapped = id_match
+    elif source_bim.empty:
         local_match = np.full(int(ref_shard.num_snp), -1, dtype=np.int64)
     else:
         ref_keys = numeric_variant_keys(ref_shard.bp, ref_shard.a1_hash64, ref_shard.a2_hash64)
@@ -652,8 +656,8 @@ def _validate_reference_for_genotype(reference) -> list:
     return ref_shards
 
 
-def load_genotype(bfile_prefix, reference, allow_indel_swaps=False) -> GenotypePanel:
-    allow_indel_swaps = _validate_allow_indel_swaps(allow_indel_swaps)
+def load_genotype(bfile_prefix, reference, allow_indel_swaps=False, match_by="genomic_position") -> GenotypePanel:
+    allow_indel_swaps = validate_matching_options(match_by, allow_indel_swaps)
     ref_shards = _validate_reference_for_genotype(reference)
     prefix = str(bfile_prefix)
     ref_labels = [s.label for s in ref_shards]
@@ -706,8 +710,31 @@ def load_genotype(bfile_prefix, reference, allow_indel_swaps=False) -> GenotypeP
             panel_fam = sources["X"].fam
             subject_maps["X"] = _all_subjects_present(sources["X"].source_num_sample)
 
+    id_matches = {}
+    if match_by == "id":
+        records = [shared] if source_layout == "non_sharded" else list(sources.values())
+        inputs = [
+            (record.bim_path, record.bim["snp"].to_numpy(dtype=object),
+             record.bim["a1_hash64"].to_numpy(dtype=np.uint64),
+             record.bim["a2_hash64"].to_numpy(dtype=np.uint64),
+             record.bim["chr"].to_numpy(dtype=object))
+            for record in records
+        ]
+        rows, swapped = match_id_panel(reference, inputs, chromosome_scope=True)
+        source_offsets = {}
+        offset = 0
+        for record in records:
+            source_offsets[id(record)] = offset
+            offset += len(record.bim)
+        for shard, off in zip(ref_shards, reference.shard_offsets):
+            sl = slice(off["start0"], off["stop0"])
+            local = rows[sl].copy()
+            local[local >= 0] -= source_offsets[id(sources[shard.label])]
+            id_matches[shard.label] = (local, swapped[sl])
+
     shards = [
-        _build_shard(ref_shard, sources[ref_shard.label], *subject_maps[ref_shard.label], allow_indel_swaps)
+        _build_shard(ref_shard, sources[ref_shard.label], *subject_maps[ref_shard.label], allow_indel_swaps,
+                     id_matches.get(ref_shard.label))
         for ref_shard in ref_shards
     ]
     return GenotypePanel(

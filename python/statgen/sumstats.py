@@ -10,8 +10,9 @@ import numpy as np
 import pandas as pd
 from pandas.errors import EmptyDataError, ParserError
 
-from ._utils import CANONICAL_CHR_ORDER, _validate_allow_indel_swaps, allele_hash64, validate_requested_shards, _warn_allele_cap
+from ._utils import CANONICAL_CHR_ORDER, allele_hash64, validate_requested_shards, _warn_allele_cap
 from ._verbosity import info, report_variant_swaps
+from ._id_match import match_id_panel, validate_matching_options
 from ._variant_match import match_shard_numeric, numeric_variant_keys
 
 _CACHE_SCHEMA = "sumstats_cache/0.1"
@@ -54,25 +55,26 @@ def _read_sumstats_header(path: Path) -> list[str]:
     return header.rstrip("\r\n").split("\t")
 
 
-def _parse_sumstats(path: Path) -> pd.DataFrame:
+def _parse_sumstats(path: Path, match_by="genomic_position") -> pd.DataFrame:
     raw_columns = _read_sumstats_header(path)
     columns = _canonicalize_column_names(raw_columns, path)
-    missing = [c for c in _REQUIRED_COLS if c not in columns]
+    required = _REQUIRED_COLS if match_by == "genomic_position" else ("snp", "a1", "a2", "p")
+    missing = [c for c in required if c not in columns]
     if missing:
         raise ValueError(f"{path}: missing required columns: {', '.join(missing)}")
 
-    selected = [c in (*_REQUIRED_COLS, *_OPTIONAL_COLS) for c in columns]
+    selected = [c in (*required, *_OPTIONAL_COLS) for c in columns]
     selected_raw = [c for c, keep in zip(raw_columns, selected) if keep]
     selected_names = [c for c, keep in zip(columns, selected) if keep]
     char_cols = {
         raw: str
         for raw, canonical in zip(selected_raw, selected_names)
-        if canonical in {"chr", "a1", "a2"}
+        if canonical in {"chr", "a1", "a2", "snp"}
     }
     numeric_cols = {
         raw: float
         for raw, canonical in zip(selected_raw, selected_names)
-        if canonical not in {"chr", "a1", "a2"}
+        if canonical not in {"chr", "a1", "a2", "snp"}
     }
     numeric_na_values = {raw: _NUMERIC_NA_VALUES for raw in numeric_cols}
 
@@ -91,29 +93,30 @@ def _parse_sumstats(path: Path) -> pd.DataFrame:
 
     df.columns = selected_names
 
-    missing = [c for c in _REQUIRED_COLS if c not in df.columns]
+    missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"{path}: missing required columns: {', '.join(missing)}")
 
     out = df
-    for col in ("chr", "a1", "a2"):
+    for col in (("chr", "a1", "a2") if match_by == "genomic_position" else ("a1", "a2")):
         bad_empty = out[col].eq("")
         if bad_empty.any():
             idx = int(bad_empty.idxmax())
             raise ValueError(f"{path}: row {idx + 2}: {col} must be non-empty")
 
-    chr_col = out["chr"]
-    chr_style = chr_col.str.lower().str.startswith("chr")
-    if chr_style.any():
-        idx = int(chr_style.idxmax())
-        raise ValueError(f"{path}: row {idx + 2}: chr-style labels (e.g., chr1/chrX) are not allowed")
-    known_chr = chr_col.isin(CANONICAL_CHR_ORDER) | chr_col.isin(_IGNORED_CHR)
-    if not known_chr.all():
-        idx = int((~known_chr).idxmax())
-        raise ValueError(
-            f"{path}: row {idx + 2}: unsupported chr label {chr_col.iat[idx]!r}; expected 1-22, X (Y/MT are ignored)"
-        )
-    out = out.loc[chr_col.isin(CANONICAL_CHR_ORDER)].copy()
+    if match_by == "genomic_position":
+        chr_col = out["chr"]
+        chr_style = chr_col.str.lower().str.startswith("chr")
+        if chr_style.any():
+            idx = int(chr_style.idxmax())
+            raise ValueError(f"{path}: row {idx + 2}: chr-style labels (e.g., chr1/chrX) are not allowed")
+        known_chr = chr_col.isin(CANONICAL_CHR_ORDER) | chr_col.isin(_IGNORED_CHR)
+        if not known_chr.all():
+            idx = int((~known_chr).idxmax())
+            raise ValueError(
+                f"{path}: row {idx + 2}: unsupported chr label {chr_col.iat[idx]!r}; expected 1-22, X (Y/MT are ignored)"
+            )
+        out = out.loc[chr_col.isin(CANONICAL_CHR_ORDER)].copy()
 
     _warn_allele_cap(
         out["a1"], out["a2"], path, out.index.to_numpy() + 2
@@ -136,11 +139,12 @@ def _parse_sumstats(path: Path) -> pd.DataFrame:
         idx = int(same_allele.idxmax())
         raise ValueError(f"{path}: row {idx + 2}: a1 and a2 must differ")
 
-    bad_bp = out["bp"].isna() | (np.floor(out["bp"]) != out["bp"])
-    if bad_bp.any():
-        idx = int(bad_bp.idxmax())
-        raise ValueError(f"{path}: row {idx + 2}: bp is not an integer: {out.loc[idx, 'bp']!r}")
-    out["bp"] = out["bp"].astype(np.int64)
+    if match_by == "genomic_position":
+        bad_bp = out["bp"].isna() | (np.floor(out["bp"]) != out["bp"])
+        if bad_bp.any():
+            idx = int(bad_bp.idxmax())
+            raise ValueError(f"{path}: row {idx + 2}: bp is not an integer: {out.loc[idx, 'bp']!r}")
+        out["bp"] = out["bp"].astype(np.int64)
 
     p_arr = out["p"].to_numpy(dtype=float)
     bad_p = ~np.isnan(p_arr) & (~np.isfinite(p_arr) | (p_arr < 0.0) | (p_arr > 1.0))
@@ -407,7 +411,7 @@ def _build_sumstats_from_aligned(
     return Sumstats(shards)
 
 
-def _build_sumstats_panel(df: pd.DataFrame, reference, source_path, allow_indel_swaps=False) -> Sumstats:
+def _build_sumstats_panel(df: pd.DataFrame, reference, source_path, allow_indel_swaps=False, match_by="genomic_position") -> Sumstats:
     n = int(reference.num_snp)
     aligned_optional = {
         col: (np.full(n, np.nan, dtype=float) if col in df.columns else None)
@@ -415,34 +419,46 @@ def _build_sumstats_panel(df: pd.DataFrame, reference, source_path, allow_indel_
     }
     aligned_p = np.full(n, np.nan, dtype=float)
 
-    src_chr = df["chr"].to_numpy(dtype=object)
-    src_bp = df["bp"].to_numpy(dtype=np.int64)
+    if match_by == "genomic_position":
+        src_chr = df["chr"].to_numpy(dtype=object)
+        src_bp = df["bp"].to_numpy(dtype=np.int64)
     src_a1_hash64 = allele_hash64(df["a1"].to_numpy(dtype=object))
     src_a2_hash64 = allele_hash64(df["a2"].to_numpy(dtype=object))
+
+    if match_by == "id":
+        id_rows, id_swapped = match_id_panel(reference, [
+            (source_path, df["snp"].to_numpy(dtype=object), src_a1_hash64, src_a2_hash64, None)
+        ])
 
     for ref_shard, off in zip(reference.shards, reference.shard_offsets):
         start = int(off["start0"])
         stop = int(off["stop0"])
-        src_mask = src_chr == ref_shard.label
-        src_idx = np.flatnonzero(src_mask)
-        ref_keys = numeric_variant_keys(ref_shard.bp, ref_shard.a1_hash64, ref_shard.a2_hash64)
-        src_keys = numeric_variant_keys(src_bp[src_idx], src_a1_hash64[src_idx], src_a2_hash64[src_idx])
-        match = match_shard_numeric(
-            ref_keys, src_keys, ref_shard.label, source_name="sumstats",
-            allow_indel_swaps=allow_indel_swaps,
-        )
-        local_match = match.source_rows
-        report_variant_swaps(source_path, ref_shard.label, np.count_nonzero(match.is_allele_swapped),
-                             match.num_strand_ambiguous, match.num_disabled_indels)
+        if match_by == "id":
+            local_match = id_rows[start:stop]
+            swapped = id_swapped[start:stop]
+        else:
+            src_mask = src_chr == ref_shard.label
+            src_idx = np.flatnonzero(src_mask)
+            ref_keys = numeric_variant_keys(ref_shard.bp, ref_shard.a1_hash64, ref_shard.a2_hash64)
+            src_keys = numeric_variant_keys(src_bp[src_idx], src_a1_hash64[src_idx], src_a2_hash64[src_idx])
+            match = match_shard_numeric(
+                ref_keys, src_keys, ref_shard.label, source_name="sumstats",
+                allow_indel_swaps=allow_indel_swaps,
+            )
+            local_match = match.source_rows
+            report_variant_swaps(source_path, ref_shard.label, np.count_nonzero(match.is_allele_swapped),
+                                 match.num_strand_ambiguous, match.num_disabled_indels)
+            swapped = match.is_allele_swapped
         has_match = local_match >= 0
-        matched_src = src_idx[local_match[has_match]]
+        matched_src = (local_match[has_match] if match_by == "id"
+                       else src_idx[local_match[has_match]])
         aligned_ix = np.arange(start, stop, dtype=np.int64)[has_match]
 
         aligned_p[aligned_ix] = df["p"].to_numpy(dtype=float)[matched_src]
         for col, out in aligned_optional.items():
             if out is not None:
                 out[aligned_ix] = df[col].to_numpy(dtype=float)[matched_src]
-        swapped_ix = np.arange(start, stop)[match.is_allele_swapped]
+        swapped_ix = np.arange(start, stop)[swapped]
         for col in ("z", "beta", "eaf"):
             out = aligned_optional[col]
             if out is not None:
@@ -467,10 +483,10 @@ def _build_sumstats_panel(df: pd.DataFrame, reference, source_path, allow_indel_
     )
 
 
-def load_sumstats(path, reference, allow_indel_swaps=False) -> Sumstats:
-    allow_indel_swaps = _validate_allow_indel_swaps(allow_indel_swaps)
+def load_sumstats(path, reference, allow_indel_swaps=False, match_by="genomic_position") -> Sumstats:
+    allow_indel_swaps = validate_matching_options(match_by, allow_indel_swaps)
     path = Path(path)
-    return _build_sumstats_panel(_parse_sumstats(path), reference, path, allow_indel_swaps)
+    return _build_sumstats_panel(_parse_sumstats(path, match_by), reference, path, allow_indel_swaps, match_by)
 
 
 def create_sumstats(
