@@ -95,3 +95,95 @@
   rows[local_index[ord[ref]][matched]] <- src_by_group[group[ref][matched]]
   list(rows = rows, excluded_hits = sum(src_count[ref_count > 0L & eligible_count == 0L]))
 }
+
+.id_matching_eligible <- function(ids, a1, a2, context) {
+  snv <- .is_single_nucleotide_variant_hash(a1, a2)
+  palindromic <- .is_strand_ambiguous_hash(a1, a2)
+  if (any(palindromic)) .info(sprintf("%s: excluded %d palindromic SNV(s)", context, sum(palindromic)))
+  if (any(!snv)) .info(sprintf("%s: excluded %d multi-base variant(s)", context, sum(!snv)))
+  alleles_ok <- snv & !palindromic & a1 != a2
+  missing <- is.na(ids) | ids %in% c("", ".", "NA", "NaN")
+  valid <- !missing & grepl("\\A[!-~]{1,32}\\z", ids, perl = TRUE, useBytes = TRUE)
+  n_missing <- sum(alleles_ok & missing)
+  n_invalid <- sum(alleles_ok & !valid & !missing)
+  if (n_missing) warning(sprintf("%s: excluded %d unusable missing, empty, or placeholder ID(s)", context, n_missing), call. = FALSE)
+  if (n_invalid) warning(sprintf("%s: excluded %d unusable overlength or invalid-character ID(s)", context, n_invalid), call. = FALSE)
+  alleles_ok & valid
+}
+
+.match_id_panel <- function(reference, sources, chromosome_scope = FALSE) {
+  ref_a1 <- a1_hash64(reference)
+  ref_a2 <- a2_hash64(reference)
+  ref_ids <- snp(reference)  # Decode packed reference IDs once, only in ID mode.
+  ri <- which(.id_matching_eligible(ref_ids, ref_a1, ref_a2, "reference panel"))
+  labels <- vapply(shards(reference), function(s) s$label, character(1))
+  eligible <- lapply(sources, function(source) {
+    scope <- if (chromosome_scope) source$chr %in% labels else rep.int(TRUE, length(source$ids))
+    ok <- rep.int(FALSE, length(source$ids))
+    ok[scope] <- .id_matching_eligible(source$ids[scope], source$a1[scope], source$a2[scope], source$context)
+    ok
+  })
+  src_ids <- unlist(lapply(sources, function(s) s$ids), use.names = FALSE)
+  src_a1 <- do.call(c, lapply(sources, function(s) s$a1))
+  src_a2 <- do.call(c, lapply(sources, function(s) s$a2))
+  si <- which(unlist(eligible, use.names = FALSE))
+  rows <- rep.int(NA_integer_, num_snp(reference))
+  swapped <- rep.int(FALSE, length(rows))
+  if (!length(ri)) return(list(source_rows = rows, is_allele_swapped = swapped))
+
+  ids <- c(ref_ids[ri], src_ids[si])
+  unique_ids <- unique(ids)
+  codes <- match(ids, unique_ids)
+  n_codes <- as.double(length(unique_ids))
+  # Packed integer codes stay exact in double; allele hashes remain integer64.
+  if (n_codes > (2^53 - 1) / (2 * (length(labels) + 1))) {
+    stop("Too many ID codes for exact numeric matching keys", call. = FALSE)
+  }
+  r1 <- bit64::match(ref_a1[ri], .single_base_hash64)
+  r2 <- bit64::match(ref_a2[ri], .single_base_hash64)
+  s1 <- bit64::match(src_a1[si], .single_base_hash64)
+  s2 <- bit64::match(src_a2[si], .single_base_hash64)
+  ref_keys <- as.double(codes[seq_along(ri)]) * 2 + (r1 + r2) %% 2L
+  src_keys <- as.double(codes[length(ri) + seq_along(si)]) * 2 + (s1 + s2) %% 2L
+  duplicate <- duplicated(ref_keys) | duplicated(ref_keys, fromLast = TRUE)
+  if (any(duplicate)) {
+    warning(sprintf("reference panel: excluded %d slots in %d duplicate ID key groups",
+                    sum(duplicate), length(unique(ref_keys[duplicate]))), call. = FALSE)
+  }
+  ri <- ri[!duplicate]
+  ref_keys <- ref_keys[!duplicate]
+  if (!length(ri) || !length(si)) return(list(source_rows = rows, is_allele_swapped = swapped))
+  if (chromosome_scope) {
+    ref_chr <- rep.int(seq_along(labels), vapply(shards(reference), num_snp, integer(1)))
+    src_chr <- match(unlist(lapply(sources, function(s) s$chr), use.names = FALSE), labels)
+    ref_keys <- ref_chr[ri] * (n_codes * 2) + ref_keys
+    src_keys <- src_chr[si] * (n_codes * 2) + src_keys
+  }
+  loc <- match(src_keys, ref_keys)
+  hit <- !is.na(loc)
+  counts <- tabulate(loc[hit], length(ri))
+  if (any(counts > 1L)) {
+    slot <- which(counts > 1L)[[1]]
+    contexts <- vapply(sources, function(s) s$context, character(1))
+    stop(sprintf("Ambiguous duplicate source/reference ID matching key for ID %s in %s",
+                 sQuote(ref_ids[ri[slot]]), paste(contexts, collapse = ", ")), call. = FALSE)
+  }
+  rows[ri[loc[hit]]] <- si[hit]
+  slots <- which(!is.na(rows))
+  source_first <- bit64::match(src_a1[rows[slots]], .single_base_hash64)
+  target_first <- bit64::match(ref_a1[slots], .single_base_hash64)
+  target_other <- bit64::match(ref_a2[slots], .single_base_hash64)
+  swapped[slots] <- source_first == target_other | 5L - source_first == target_other
+  complemented <- rep.int(FALSE, length(rows))
+  complemented[slots] <- source_first != target_first & source_first != target_other
+  offsets <- c(0, cumsum(vapply(sources, function(s) length(s$ids), integer(1))))
+  for (i in seq_along(sources)) {
+    selected <- !is.na(rows) & rows > offsets[i] & rows <= offsets[i + 1L]
+    for (label in c("inversion", "strand complementation")) {
+      mask <- if (label == "inversion") swapped else complemented
+      count <- sum(selected & mask)
+      if (count) .info(sprintf("%s: %d matched row(s) requiring %s", sources[[i]]$context, count, label))
+    }
+  }
+  list(source_rows = rows, is_allele_swapped = swapped)
+}

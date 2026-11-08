@@ -30,7 +30,18 @@ install.packages("statgen")
 
 ## Allele Alignment
 
-Loaders match reversed SNVs automatically; indel swaps are opt-in.
+Loaders default to matching genomic position and alleles, accepting reversed
+SNVs automatically and indel swaps by opt-in. To match marker IDs and alleles:
+
+```r
+trait <- load_sumstats(path, reference, match_by = "id")
+genotype <- load_genotype(bfile_prefix, reference, match_by = "id")
+```
+
+ID mode supports non-palindromic SNVs, including strand complements. IDs are
+case-sensitive: `rs123` and `RS123` do not match. Summary statistics ignore
+coordinates and search all source rows; genotypes search only the corresponding
+chromosome. Both modes orient values to reference `a1`.
 See `?allele_matching` and `vignette("statgen")` for details and examples.
 
 ## Annotation Loading

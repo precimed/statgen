@@ -37,7 +37,12 @@ function [rows, names, n_missing, n_invalid] = id_name_matrix(values, n, eligibl
             block(:, (size(block, 2) + 1):width) = ' ';
             inside = bsxfun(@lt, 0:(width - 1), lengths(selected));
         end
-        placeholder = lengths(selected) == 1 & block(:, 1) == '.';
+        % Case-sensitive placeholders: '.', 'NA', 'NaN'. Pad so short batches index safely.
+        len = lengths(selected);
+        padded = [block, repmat(' ', size(block, 1), max(0, 3 - width))];
+        placeholder = (len == 1 & padded(:, 1) == '.') | ...
+            (len == 2 & padded(:, 1) == 'N' & padded(:, 2) == 'A') | ...
+            (len == 3 & padded(:, 1) == 'N' & padded(:, 2) == 'a' & padded(:, 3) == 'N');
         placeholders(selected) = placeholder;
         good = ~any(inside & (block < char(33) | block > char(126)), 2) & ~placeholder;
         % Invalid IDs never enter the exact-comparison matrix.

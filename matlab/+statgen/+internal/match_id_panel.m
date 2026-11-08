@@ -140,7 +140,7 @@ end
 
 function report_names_(context, missing, invalid)
     if missing > 0
-        warning('statgen:match', '%s: excluded %d unusable missing/empty/. ID(s)', context, missing);
+        warning('statgen:match', '%s: excluded %d unusable missing, empty, or placeholder ID(s)', context, missing);
     end
     if invalid > 0
         warning('statgen:match', '%s: excluded %d unusable overlength or invalid-character ID(s)', context, invalid);

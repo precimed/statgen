@@ -16,7 +16,8 @@
 Load, create, inspect, and cache reference-aligned GWAS summary statistics.
 }
 \usage{
-load_sumstats(path, reference, allow_indel_swaps = FALSE)
+load_sumstats(path, reference, allow_indel_swaps = FALSE,
+  match_by = "genomic_position")
 create_sumstats(reference, p, z = NULL, n = NULL,
   beta = NULL, se = NULL, eaf = NULL, info = NULL)
 save_sumstats_cache(sumstats, path)
@@ -36,6 +37,9 @@ info_vec(x, ...)
 \item{reference}{A \code{ReferencePanel}.}
 \item{allow_indel_swaps}{Logical scalar enabling indel swaps. Default is
 \code{FALSE}; see \link{allele_matching}.}
+\item{match_by}{Character scalar selecting the position (\code{"genomic_position"},
+default) or marker ID (\code{"id"}) component of the matching key. Both modes
+also require allele matching; see \link{allele_matching}.}
 \item{sumstats, x}{A \code{Sumstats} object.}
 \item{p, z, n, beta, se, eaf, info}{Aligned
 numeric vectors. Optional vectors may be \code{NULL}. Missing \code{p}
@@ -51,8 +55,12 @@ to \code{NaN} at those positions. Other \code{p} values must be finite in
 return ordinary R vectors, with \code{NULL} for absent optional fields.
 }
 \details{
-Loading prefers exact matches, swaps SNVs automatically, and uses
-\code{allow_indel_swaps} for indels. Effects and EAF describe the reference
+Position mode prefers exact matches, swaps SNVs automatically, and uses
+\code{allow_indel_swaps} for indels. ID mode requires \code{SNP}, the allele
+columns, and \code{P}; it ignores coordinates and searches all source rows
+across the supplied reference panel. ID comparison is exact and case-sensitive.
+Only non-palindromic SNVs are eligible, including strand complements.
+Effects and EAF describe the reference
 panel's \code{a1} (ALT) allele. \code{create_sumstats()} takes vectors already
 in that order and orientation; it performs no allele matching or swapping.
 The TSV \code{p} column is required; empty fields, \code{NA}, and \code{NaN}

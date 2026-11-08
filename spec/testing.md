@@ -323,7 +323,8 @@ ID-mode coverage must also include:
   and the resulting value transformations and diagnostic counts;
 - panel-wide reference-key exclusions, including cross-chromosome duplicates,
   and source ambiguity even when candidate values agree;
-- unusable IDs at length and character boundaries, literal `NA` and `0` IDs,
+- unusable IDs at length and character boundaries, `.`/`NA`/`NaN` placeholders
+  versus ordinary `0` IDs,
   and exact case-sensitive comparison;
 - missing-P filtering before candidate counting, ignored or absent sumstats
   coordinates, and genotype chromosome scope;

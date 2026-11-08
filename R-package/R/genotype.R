@@ -18,8 +18,8 @@ is_subject_present <- function(x, shard, ...) UseMethod("is_subject_present")
 fetch_genotypes_int8 <- function(x, snp_indices, bed_path = NULL, ...) UseMethod("fetch_genotypes_int8")
 fetch_genotypes <- function(x, snp_indices, bed_path = NULL, haploid_mode = NULL, ...) UseMethod("fetch_genotypes")
 
-load_genotype <- function(bfile_prefix, reference, allow_indel_swaps = FALSE) {
-  allow_indel_swaps <- .validate_allow_indel_swaps(allow_indel_swaps)
+load_genotype <- function(bfile_prefix, reference, allow_indel_swaps = FALSE, match_by = "genomic_position") {
+  allow_indel_swaps <- .validate_matching_options(match_by, allow_indel_swaps)
   prefix <- .validate_path_scalar(bfile_prefix, "bfile_prefix")
   if (!inherits(reference, "ReferencePanel")) {
     stop("reference must be a ReferencePanel", call. = FALSE)
@@ -84,10 +84,29 @@ load_genotype <- function(bfile_prefix, reference, allow_indel_swaps = FALSE) {
     }
   }
 
+  id_matches <- vector("list", length(ref_shards))
+  if (match_by == "id") {
+    records <- if (layout == "non_sharded") list(shared) else unname(sources)
+    inputs <- lapply(records, function(record) list(
+      context = record$bim_path, ids = record$bim$snp,
+      a1 = record$bim$a1_hash64, a2 = record$bim$a2_hash64, chr = record$bim$chr
+    ))
+    id_match <- .match_id_panel(reference, inputs, chromosome_scope = TRUE)
+    source_offsets <- if (layout == "non_sharded") rep.int(0L, length(ref_shards)) else
+      c(0, utils::head(cumsum(vapply(records, function(s) nrow(s$bim), integer(1))), -1L))
+    offsets <- shard_offsets(reference)
+    for (i in seq_along(ref_shards)) {
+      ix <- seq.int(offsets$start0[i] + 1L, offsets$stop0[i])
+      local <- id_match$source_rows[ix]
+      local[!is.na(local)] <- local[!is.na(local)] - source_offsets[i]
+      id_matches[[i]] <- list(source_rows = local, is_allele_swapped = id_match$is_allele_swapped[ix])
+    }
+  }
+
   out <- vector("list", length(ref_shards))
   for (i in seq_along(ref_shards)) {
     label <- ref_shards[[i]]$label
-    out[[i]] <- .build_genotype_shard(ref_shards[[i]], sources[[label]], subject_maps[[label]], allow_indel_swaps)
+    out[[i]] <- .build_genotype_shard(ref_shards[[i]], sources[[label]], subject_maps[[label]], allow_indel_swaps, id_matches[[i]])
   }
   .new_genotype_panel(
     out,
@@ -514,21 +533,27 @@ print.GenotypePanel <- function(x, ...) {
   list(subject_present = subject_present, source_subject_row0 = source_subject_row0)
 }
 
-.build_genotype_shard <- function(ref_shard, source, subject_map, allow_indel_swaps) {
-  is_allele_swapped <- rep.int(FALSE, ref_shard$num_snp)
-  source_bim <- source$bim[source$bim$chr == ref_shard$label, , drop = FALSE]
-  if (!nrow(source_bim)) {
-    local_match <- rep.int(NA_integer_, ref_shard$num_snp)
+.build_genotype_shard <- function(ref_shard, source, subject_map, allow_indel_swaps, id_match = NULL) {
+  if (!is.null(id_match)) {
+    source_bim <- source$bim
+    local_match <- id_match$source_rows
+    is_allele_swapped <- id_match$is_allele_swapped
   } else {
-    match <- .match_variant_keys(
-      bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
-      source_bim$bp, source_bim$a1_hash64, source_bim$a2_hash64,
-      ref_shard$label, "genotype", allow_indel_swaps
-    )
-    local_match <- match$source_rows
-    is_allele_swapped <- match$is_allele_swapped
-    .report_variant_swaps(source$bim_path, ref_shard$label, sum(is_allele_swapped),
-                          match$num_strand_ambiguous, match$num_disabled_indels)
+    is_allele_swapped <- rep.int(FALSE, ref_shard$num_snp)
+    source_bim <- source$bim[source$bim$chr == ref_shard$label, , drop = FALSE]
+    if (!nrow(source_bim)) {
+      local_match <- rep.int(NA_integer_, ref_shard$num_snp)
+    } else {
+      match <- .match_variant_keys(
+        bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
+        source_bim$bp, source_bim$a1_hash64, source_bim$a2_hash64,
+        ref_shard$label, "genotype", allow_indel_swaps
+      )
+      local_match <- match$source_rows
+      is_allele_swapped <- match$is_allele_swapped
+      .report_variant_swaps(source$bim_path, ref_shard$label, sum(is_allele_swapped),
+                            match$num_strand_ambiguous, match$num_disabled_indels)
+    }
   }
 
   is_present <- !is.na(local_match)

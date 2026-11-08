@@ -133,7 +133,8 @@ def test_allele_exclusions_unused_duplicates_and_empty_source(tmp_path):
 
 @pytest.mark.parametrize('marker,eligible', [
     ('!', True), ('~', True), ('x' * 32, True), ('x' * 33, False),
-    ('.', False), ('é', False), ('\x7f', False), ('NA', True), ('0', True),
+    ('.', False), ('é', False), ('\x7f', False), ('NA', False), ('NaN', False),
+    ('na', True), ('nan', True), ('0', True),
 ])
 def test_literal_id_boundaries(tmp_path, marker, eligible):
     script = load_ref(tmp_path, [('1', marker, 1, 'A', 'G')])
@@ -206,7 +207,7 @@ def test_genotype_diagnostic_chromosome_scope(tmp_path):
                              ('1', 'pal', 30, 'A', 'T'), ('2', '.', 10, 'A', 'G'),
                              ('2', 'pal', 20, 'A', 'T'), ('2', 'multi', 30, 'A', 'AG')])
     output = run(script + f"g = statgen.load_genotype('{prefix}', ref, 'match_by', 'id'); assert(g.is_present);")
-    assert f'{prefix}.bim: excluded 1 unusable missing/empty/. ID(s)' in output
+    assert f'{prefix}.bim: excluded 1 unusable missing, empty, or placeholder ID(s)' in output
     assert f'{prefix}.bim: excluded 1 palindromic SNV(s)' in output
     assert 'excluded 2' not in output and f'{prefix}.bim: excluded 1 multi-base' not in output
 

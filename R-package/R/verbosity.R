@@ -35,3 +35,15 @@ get_verbosity <- function() {
   if (disabled_indels > 0L) .info(sprintf("%s%d indel row(s) unmatched because indel swaps are disabled", context, disabled_indels))
   invisible(NULL)
 }
+
+.validate_matching_options <- function(match_by, allow_indel_swaps) {
+  allow_indel_swaps <- .validate_allow_indel_swaps(allow_indel_swaps)
+  if (!is.character(match_by) || length(match_by) != 1L || is.na(match_by) ||
+      !(match_by %in% c("genomic_position", "id"))) {
+    stop('match_by must be "genomic_position" or "id"', call. = FALSE)
+  }
+  if (match_by == "id" && allow_indel_swaps) {
+    stop('allow_indel_swaps=TRUE is incompatible with match_by="id"', call. = FALSE)
+  }
+  allow_indel_swaps
+}

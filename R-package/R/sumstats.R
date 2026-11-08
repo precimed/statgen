@@ -13,14 +13,14 @@ se_vec <- function(x, ...) UseMethod("se_vec")
 eaf_vec <- function(x, ...) UseMethod("eaf_vec")
 info_vec <- function(x, ...) UseMethod("info_vec")
 
-load_sumstats <- function(path, reference, allow_indel_swaps = FALSE) {
-  allow_indel_swaps <- .validate_allow_indel_swaps(allow_indel_swaps)
+load_sumstats <- function(path, reference, allow_indel_swaps = FALSE, match_by = "genomic_position") {
+  allow_indel_swaps <- .validate_matching_options(match_by, allow_indel_swaps)
   path <- .validate_path_scalar(path, "path")
   if (!inherits(reference, "ReferencePanel")) {
     stop("reference must be a ReferencePanel", call. = FALSE)
   }
-  df <- .parse_sumstats_tsv(path)
-  .build_sumstats_panel(df, reference, path, allow_indel_swaps)
+  df <- .parse_sumstats_tsv(path, match_by)
+  .build_sumstats_panel(df, reference, path, allow_indel_swaps, match_by)
 }
 
 create_sumstats <- function(reference, p, z = NULL, n = NULL,
@@ -215,21 +215,23 @@ print.Sumstats <- function(x, ...) {
   structure(list(shards = shard_list, num_snp = pos, shard_offsets = offsets), class = "Sumstats")
 }
 
-.parse_sumstats_tsv <- function(path) {
+.parse_sumstats_tsv <- function(path, match_by = "genomic_position") {
   if (!file.exists(path)) {
     stop(sprintf("File not found: %s", path), call. = FALSE)
   }
   raw_names <- .read_sumstats_header(path)
   canonical_names <- .canonicalize_sumstats_columns(raw_names, path)
-  missing <- setdiff(.sumstats_required_cols, canonical_names)
+  id_mode <- match_by == "id"
+  required <- if (id_mode) c("snp", "a1", "a2", "p") else .sumstats_required_cols
+  missing <- setdiff(required, canonical_names)
   if (length(missing)) {
     stop(sprintf("%s: missing required columns: %s", path, paste(missing, collapse = ", ")), call. = FALSE)
   }
-  selected <- canonical_names %in% c(.sumstats_required_cols, .sumstats_optional_cols)
+  selected <- canonical_names %in% c(required, .sumstats_optional_cols)
   selected_raw <- raw_names[selected]
   selected_names <- canonical_names[selected]
-  char_cols <- selected_raw[selected_names %in% c("chr", "a1", "a2")]
-  numeric_cols <- selected_raw[!(selected_names %in% c("chr", "a1", "a2"))]
+  char_cols <- selected_raw[selected_names %in% c("chr", "snp", "a1", "a2")]
+  numeric_cols <- selected_raw[!(selected_names %in% c("chr", "snp", "a1", "a2"))]
 
   fread_args <- c(
     .sumstats_fread_input(path),
@@ -265,17 +267,19 @@ print.Sumstats <- function(x, ...) {
   }
   names(df) <- selected_names
 
-  missing <- setdiff(.sumstats_required_cols, names(df))
+  missing <- setdiff(required, names(df))
   if (length(missing)) {
     stop(sprintf("%s: missing required columns: %s", path, paste(missing, collapse = ", ")), call. = FALSE)
   }
 
-  bad_chr <- is.na(df$chr) | df$chr == ""
-  if (any(bad_chr)) {
-    stop(sprintf("%s: row %d: chr must be non-empty", path, which(bad_chr)[[1]] + 1L), call. = FALSE)
+  if (!id_mode) {
+    bad_chr <- is.na(df$chr) | df$chr == ""
+    if (any(bad_chr)) {
+      stop(sprintf("%s: row %d: chr must be non-empty", path, which(bad_chr)[[1]] + 1L), call. = FALSE)
+    }
+    .validate_source_chr_labels(df$chr, path)
+    df <- df[df$chr %in% .canonical_chr_order, , drop = FALSE]
   }
-  .validate_source_chr_labels(df$chr, path)
-  df <- df[df$chr %in% .canonical_chr_order, , drop = FALSE]
 
   for (field in c("a1", "a2")) {
     bad <- is.na(df[[field]]) | df[[field]] == ""
@@ -303,14 +307,16 @@ print.Sumstats <- function(x, ...) {
     stop(sprintf("%s: row %d: a1 and a2 must differ", path, row), call. = FALSE)
   }
 
-  bp <- .parse_sumstats_numeric(df$bp, path, "bp", rownames(df))
-  bad_bp <- is.na(bp) | !is.finite(bp) | floor(bp) != bp
-  if (any(bad_bp)) {
-    idx <- which(bad_bp)[[1]]
-    row <- as.integer(rownames(df)[idx]) + 1L
-    stop(sprintf("%s: row %d: bp is not an integer: %s", path, row, sQuote(df$bp[[idx]])), call. = FALSE)
+  if (!id_mode) {
+    bp <- .parse_sumstats_numeric(df$bp, path, "bp", rownames(df))
+    bad_bp <- is.na(bp) | !is.finite(bp) | floor(bp) != bp
+    if (any(bad_bp)) {
+      idx <- which(bad_bp)[[1]]
+      row <- as.integer(rownames(df)[idx]) + 1L
+      stop(sprintf("%s: row %d: bp is not an integer: %s", path, row, sQuote(df$bp[[idx]])), call. = FALSE)
+    }
+    df$bp <- as.integer(bp)
   }
-  df$bp <- as.integer(bp)
 
   p <- .parse_sumstats_numeric(df$p, path, "p", rownames(df))
   bad_p <- !is.na(p) & (!is.finite(p) | p < 0 | p > 1)
@@ -396,7 +402,7 @@ print.Sumstats <- function(x, ...) {
   }
 }
 
-.build_sumstats_panel <- function(df, reference, source_path, allow_indel_swaps) {
+.build_sumstats_panel <- function(df, reference, source_path, allow_indel_swaps, match_by = "genomic_position") {
   n <- num_snp(reference)
   aligned_p <- rep.int(NaN, n)
   aligned_optional <- lapply(.sumstats_optional_cols, function(field) {
@@ -404,11 +410,18 @@ print.Sumstats <- function(x, ...) {
   })
   names(aligned_optional) <- .sumstats_optional_cols
 
-  src_chr <- as.character(df$chr)
-  keep_supported <- src_chr %in% .canonical_chr_order
-  source_rows_by_chr <- split(which(keep_supported), src_chr[keep_supported])
+  id_mode <- match_by == "id"
   src_a1_hash64 <- .allele_hash64(df$a1)
   src_a2_hash64 <- .allele_hash64(df$a2)
+  if (id_mode) {
+    id_match <- .match_id_panel(reference, list(list(
+      context = source_path, ids = df$snp, a1 = src_a1_hash64, a2 = src_a2_hash64
+    )))
+  } else {
+    src_chr <- as.character(df$chr)
+    keep_supported <- src_chr %in% .canonical_chr_order
+    source_rows_by_chr <- split(which(keep_supported), src_chr[keep_supported])
+  }
 
   ref_shards <- shards(reference)
   offsets <- shard_offsets(reference)
@@ -416,24 +429,27 @@ print.Sumstats <- function(x, ...) {
     ref_shard <- ref_shards[[i]]
     start <- offsets$start0[[i]] + 1L
     stop <- offsets$stop0[[i]]
-    src_idx <- source_rows_by_chr[[ref_shard$label]]
-    if (is.null(src_idx)) {
-      src_idx <- integer()
+    if (id_mode) {
+      ix <- seq.int(start, stop)
+      local_match <- id_match$source_rows[ix]
+      swapped <- id_match$is_allele_swapped[ix]
+      has_match <- !is.na(local_match)
+      matched_src <- local_match[has_match]
+    } else {
+      src_idx <- source_rows_by_chr[[ref_shard$label]]
+      if (is.null(src_idx)) src_idx <- integer()
+      match <- .match_variant_keys(
+        bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
+        df$bp[src_idx], src_a1_hash64[src_idx], src_a2_hash64[src_idx],
+        ref_shard$label, "sumstats", allow_indel_swaps
+      )
+      local_match <- match$source_rows
+      swapped <- match$is_allele_swapped
+      .report_variant_swaps(source_path, ref_shard$label, sum(swapped),
+                            match$num_strand_ambiguous, match$num_disabled_indels)
+      has_match <- !is.na(local_match)
+      matched_src <- src_idx[local_match[has_match]]
     }
-    if (!length(src_idx)) {
-      warning(sprintf("%s: no matching source rows for reference shard '%s'", source_path, ref_shard$label), call. = FALSE)
-      next
-    }
-    match <- .match_variant_keys(
-      bp(ref_shard), a1_hash64(ref_shard), a2_hash64(ref_shard),
-      df$bp[src_idx], src_a1_hash64[src_idx], src_a2_hash64[src_idx],
-      ref_shard$label, "sumstats", allow_indel_swaps
-    )
-    local_match <- match$source_rows
-    .report_variant_swaps(source_path, ref_shard$label, sum(match$is_allele_swapped),
-                          match$num_strand_ambiguous, match$num_disabled_indels)
-    has_match <- !is.na(local_match)
-    matched_src <- src_idx[local_match[has_match]]
     aligned_idx <- seq.int(start, stop)[has_match]
     aligned_p[aligned_idx] <- df$p[matched_src]
     for (field in .sumstats_optional_cols) {
@@ -442,7 +458,7 @@ print.Sumstats <- function(x, ...) {
       }
     }
 
-    swapped_idx <- seq.int(start, stop)[match$is_allele_swapped]
+    swapped_idx <- seq.int(start, stop)[swapped]
     for (field in c("z", "beta", "eaf")) {
       if (!is.null(aligned_optional[[field]])) {
         values <- aligned_optional[[field]][swapped_idx]

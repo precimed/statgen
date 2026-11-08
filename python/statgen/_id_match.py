@@ -9,6 +9,9 @@ from ._utils import _validate_allow_indel_swaps, allele_hash64, _is_single_nucle
 from ._verbosity import info
 
 
+_PLACEHOLDER_IDS = ["", ".", "NA", "NaN"]
+
+
 def validate_matching_options(match_by, allow_indel_swaps):
     allow_indel_swaps = _validate_allow_indel_swaps(allow_indel_swaps)
     if not isinstance(match_by, str) or match_by not in ("genomic_position", "id"):
@@ -26,9 +29,9 @@ def _eligible(ids, a1, a2, context):
             info(f"{context}: excluded {np.count_nonzero(mask)} {label}(s)")
     alleles_ok = snv & ~palindromic & (a1 != a2)
     names = pd.Series(ids, dtype=object)
-    missing = (names.isna() | names.isin(["", "."])).to_numpy()
+    missing = (names.isna() | names.isin(_PLACEHOLDER_IDS)).to_numpy()
     valid = names.str.fullmatch(r"[\x21-\x7e]{1,32}", na=False).to_numpy(dtype=bool) & ~missing
-    for mask, label in ((missing, "missing/empty/."), (~valid & ~missing, "overlength or invalid-character")):
+    for mask, label in ((missing, "missing, empty, or placeholder"), (~valid & ~missing, "overlength or invalid-character")):
         count = np.count_nonzero(mask & alleles_ok)
         if count:
             warnings.warn(f"{context}: excluded {count} unusable {label} ID(s)",

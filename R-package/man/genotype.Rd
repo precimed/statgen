@@ -24,7 +24,8 @@ Load PLINK bfile-backed genotype metadata, inspect reference-aligned genotype
 panels, cache metadata, and fetch hardcall genotype slices from BED files.
 }
 \usage{
-load_genotype(bfile_prefix, reference, allow_indel_swaps = FALSE)
+load_genotype(bfile_prefix, reference, allow_indel_swaps = FALSE,
+  match_by = "genomic_position")
 save_genotype_cache(panel, path)
 load_genotype_cache(path, shards = NULL)
 
@@ -53,6 +54,9 @@ Use \code{@} as a shard-label placeholder for sharded input.}
 \item{reference}{A \code{ReferencePanel}.}
 \item{allow_indel_swaps}{Logical scalar enabling indel swaps. Default is
 \code{FALSE}; see \link{allele_matching}.}
+\item{match_by}{Character scalar selecting the position (\code{"genomic_position"},
+default) or marker ID (\code{"id"}) component of the matching key. Both modes
+also require allele matching; see \link{allele_matching}.}
 \item{panel, x}{A \code{GenotypePanel}.}
 \item{path}{Character scalar path to an RDS genotype metadata cache.}
 \item{shards}{Optional character vector of shard labels in canonical order.}
@@ -74,11 +78,15 @@ and requested SNPs as columns, counting reference \code{a1} and using
 \code{NaN}.
 }
 \details{
-Genotype panels read hardcalls from BED files on demand. Loading prefers exact
-matches, swaps SNVs automatically, and uses \code{allow_indel_swaps} for indels;
-counts describe the reference panel's \code{a1} (ALT) allele.
-\code{is_allele_swapped()} returns a logical vector marking variants matched
-by a swap, with false for exact matches and absent variants.
+Genotype panels read hardcalls from BED files on demand. Position mode prefers
+exact matches, swaps SNVs automatically, and uses \code{allow_indel_swaps} for
+indels. ID mode replaces position with the BIM marker ID and searches only the
+corresponding chromosome. ID comparison is exact and case-sensitive; only
+non-palindromic SNVs are eligible, including strand complements.
+Counts describe the reference panel's \code{a1} (ALT) allele.
+\code{is_allele_swapped()} marks variants requiring count inversion, including
+strand complementation plus allele exchange. It is false for complementation
+alone and absent variants.
 }
 \seealso{\link{allele_matching}, \code{load_reference}, \code{load_sumstats}, \code{set_verbosity}}
 \examples{

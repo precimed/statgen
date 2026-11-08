@@ -54,8 +54,8 @@ Optional columns:
 Column recognition is case-insensitive. Apart from case, the recognized
 genomatch cleaned-sumstats names `POS`, `EffectAllele`, and `OtherAllele` map
 to internal fields `bp`, `a1`, and `a2`. Genomatch vmap-style `bp`, `a1`, and
-`a2` are accepted directly. `SNP` is used only in ID mode and must retain literal
-ID strings, including `NA` and `0`, under the shared matching contract.
+`a2` are accepted directly. `SNP` is used only in ID mode, under the shared
+matching contract.
 Unrecognized extra columns are ignored.
 
 Logical column types:

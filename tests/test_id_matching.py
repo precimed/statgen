@@ -155,7 +155,8 @@ def test_allele_exclusions_warn_empty_shard(tmp_path, capsys, pair):
 
 @pytest.mark.parametrize('marker,eligible', [
     ('!', True), ('~', True), ('x' * 32, True), ('x' * 33, False),
-    ('.', False), ('é', False), ('\x7f', False), ('NA', True), ('0', True),
+    ('.', False), ('é', False), ('\x7f', False), ('NA', False), ('NaN', False),
+    ('na', True), ('nan', True), ('0', True),
 ])
 def test_id_boundaries_in_both_loaders(tmp_path, marker, eligible):
     ref = reference(tmp_path, [('1', marker, 1, 'A', 'G')])
@@ -298,7 +299,7 @@ def test_genotype_exclusion_diagnostics_use_reference_chromosome_scope(tmp_path,
         geno = load_genotype(prefix, ref, match_by='id')
     assert geno.is_present.all()
     assert len(caught) == 1
-    assert 'excluded 1 unusable missing/empty/. ID(s)' in str(caught[0].message)
+    assert 'excluded 1 unusable missing, empty, or placeholder ID(s)' in str(caught[0].message)
     output = capsys.readouterr().err
     assert f'{prefix}.bim: excluded 1 palindromic SNV(s)' in output
     assert f'{prefix}.bim: excluded 1 multi-base variant(s)' in output

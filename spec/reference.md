@@ -200,14 +200,15 @@ ineligible, even for exact ordered matches. `allow_indel_swaps=true` with
 `match_by="id"` is an error.
 
 An eligible ID contains 1–32 printable, non-whitespace ASCII characters
-(bytes `0x21`–`0x7e`), other than the explicit placeholder `.`. Empty/missing
-IDs, overlength IDs, and IDs containing other characters are ineligible.
-`NA` and `0` are ordinary IDs. Compare IDs exactly and case-sensitively,
+(bytes `0x21`–`0x7e`), other than the missing-ID placeholders `.`, `NA`, and
+`NaN`. Empty/missing IDs, placeholders, overlength IDs, and IDs containing other
+characters are ineligible. Placeholders are case-sensitive; `0` and `na` are
+ordinary IDs. Compare IDs exactly and case-sensitively,
 without trimming, normalization, truncation, substituting hash equality for
 exact ID equality, or coordinate fallback.
 These restrictions affect ID matching only; stored IDs remain unchanged.
 ID eligibility and equality apply to values returned by the existing source
-readers; quoting behavior remains unchanged.
+readers; quoting and whitespace-stripping behavior remain unchanged.
 
 Two eligible allele pairs are equivalent under allele exchange, strand
 complementation (`A`↔`T`, `C`↔`G`), or both. For example, `A/G`, `G/A`, `T/C`,
@@ -242,7 +243,7 @@ in their respective specs. Source and reference allele strings are not rewritten
 
 Report nonzero counts of excluded palindromic SNVs and multi-base variants at
 `info`, separately for source and reference. Warn about unusable IDs among
-otherwise eligible variants, reporting missing/empty/`.` IDs separately from
+otherwise eligible variants, reporting missing, empty, or placeholder IDs separately from
 overlength or invalid-character IDs. Reference-ambiguity warnings report the
 number of excluded slots and duplicate key groups. Source exclusion counts use
 rows remaining after missing-P filtering for sumstats, and only rows on
