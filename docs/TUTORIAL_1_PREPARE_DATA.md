@@ -288,8 +288,8 @@ See the [allele matching guide](ALLELE_MATCHING.md) for the matching options
 and [cache migration](ALLELE_MATCHING.md#genotype-caches-and-bed-overrides) for
 existing genotype caches.
 
-The original BED files must still be available when later fetching genotype
-calls, unless a replacement `bed_path` is passed to `fetch_genotypes`.
+BED files must be available when later fetching genotype calls. If they move,
+pass a replacement `bed_path` to `load_genotype_cache`.
 
 ## Build MATLAB/Octave Caches
 

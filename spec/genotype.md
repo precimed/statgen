@@ -259,9 +259,9 @@ A `GenotypeShard` is the unit of BED access. It is paired 1:1 with one
 `bed_path`, `source_row0`, `source_num_snp`, `source_num_sample`,
 `subject_present`, and `source_subject_row0`. For non-sharded bfile input,
 multiple `GenotypeShard`s may point to the same source `bed_path`; their
-`source_row0` vectors index different rows of the same source BED/BIM. For
-`@`-sharded bfile input, each `GenotypeShard` normally points to the resolved
-BED file for its paired reference shard. `GenotypePanel` operations split
+`source_row0` vectors index different rows of the same source BED/BIM. Each
+`GenotypeShard.bed_path` is a concrete BED path, never an `@` template; `@` is
+replaced with the shard label before the path is stored. `GenotypePanel` operations split
 panel-global SNP requests by `GenotypeShard`, call the corresponding
 shard-level BED reader, and reassemble outputs in requested panel-global order.
 
@@ -372,21 +372,53 @@ R `metadata` is a named list. `is_present`, `is_allele_swapped`,
 or matrices with `-1` for absent SNPs or subjects. FAM columns are character
 vectors; `sex` is an integer or numeric vector preserving FAM sex codes.
 
-`load_genotype_cache(path, optional shards)` restores the metadata/accessor
-object from cache. It must not parse source `.bim`, `.fam`, or `.ploidy`
-files, and it should not require the original `.bed` files to be present at
-cache-load time because callers may later supply an alternate `bed_path` to
-`fetch_genotypes_int8` or `fetch_genotypes`. BED existence and file-size checks
-are performed lazily by genotype fetch accessors for the addressed shards. The
-cache does not verify BED payload checksums because PLINK `.bed` has no
-manifest and full checksum verification is not part of the genotype cache
-contract.
+`load_genotype_cache(path, optional shards, optional bed_path)` restores the
+metadata/accessor object from cache. It must not parse source `.bim`, `.fam`,
+or `.ploidy` files. For each selected shard, cache load checks the `.bed` file
+(from the `bed_path` override when supplied, otherwise the stored `bed_path`).
+If a stored path is missing or its file size differs from the stored
+`bed_file_size`, cache load emits one combined warning listing the affected
+paths and still returns the panel with its paths unchanged. If an explicit
+override resolves to a missing file or a file of the wrong size for any selected
+shard, cache load fails. Cache load does not read BED content;
+magic bytes and SNP-major mode are validated by genotype fetch accessors. The
+cache does not verify BED payload checksums because PLINK
+`.bed` has no manifest and full checksum verification is not part of the
+genotype cache contract.
+
+The optional `bed_path` argument lets callers read genotype payloads from a
+different location while reusing the cached metadata. It replaces the BED
+locations for the selected shards in the returned object and is persisted by
+subsequent cache saves. It may identify a single `.bed` file or a sharded path
+containing `@`, resolved by the same shard-label substitution rules as source
+loaders. Each path is stored after shard-label substitution; relative paths
+remain relative. A single `.bed` override is used for all selected shards only when
+those shards share the same recorded physical source layout, defined as equal
+`source_num_snp` and equal `source_num_sample` across all selected shards. An
+`@` override resolves one `.bed` path per selected shard and preserves sharded
+physical layout.
+
+Overrides must not convert between source layouts. Enforcement uses
+`GenotypePanel.source_layout`, not equality of stored `bed_path` values, because
+single-shard subsets of sharded metadata still have sharded physical layout:
+
+- `source_layout == "non_sharded"`: a flat override is accepted; an
+  `@`-containing override is an error.
+- `source_layout == "sharded"`: an `@`-sharded override is accepted; a flat
+  override is accepted only when all selected shards pass the layout equality
+  check (`source_num_snp` and `source_num_sample` equal across all selected
+  shards), otherwise it is an error.
+
+The alternate `.bed` file(s) must have the same FAM/BIM structure and row order
+as the cached metadata, including source allele orientation and any chrX sample
+subset. Stored swap flags and ploidy metadata still apply, because PLINK `.bed`
+files carry neither.
 
 ## Genotype access
 
 ```text
-GenotypePanel.fetch_genotypes_int8(snp_indices, optional bed_path) -> matrix
-GenotypePanel.fetch_genotypes(snp_indices, optional bed_path, optional haploid_mode) -> matrix
+GenotypePanel.fetch_genotypes_int8(snp_indices) -> matrix
+GenotypePanel.fetch_genotypes(snp_indices, optional haploid_mode) -> matrix
 ```
 
 `snp_indices` are panel-global SNP indices in the host language's ordinary
@@ -418,16 +450,15 @@ declared biological ploidy. So male chrX with ploidy `1` turns `0/2` into
 `"ploidy_scaled"` mode, the call fails if any addressed subject has unknown sex
 and a non-missing addressed call for a SNP where `ploidy_male` differs from
 `ploidy_female`. Unknown-sex subjects absent from a shard do not trigger this
-guard because their fetched calls are missing before and after scaling. When a
-`bed_path` override is supplied, scaling still uses the loaded or cached ploidy
-metadata, because PLINK `.bed` files do not carry ploidy metadata.
+guard because their fetched calls are missing before and after scaling.
 
 Every requested SNP must have `is_present == true`; otherwise the call fails
 clearly before reading genotype payloads. Repeated SNP indices are allowed and
 return repeated genotype columns.
 
-`fetch_genotypes_int8` reads the underlying `.bed` file on each call. It
-validates the PLINK BED magic bytes and requires SNP-major mode. For each SNP,
+`fetch_genotypes_int8` reads each addressed shard's `bed_path` on each call. It
+validates the PLINK BED magic bytes, requires SNP-major mode, and requires the
+file size to equal the shard's `bed_file_size`. For each SNP,
 it reads only the corresponding packed row from disk and decodes it vectorized
 across all subjects. Under the `statgen` allele contract,
 the BED decoder first converts PLINK two-bit values to source-`a1` counts as:
@@ -439,36 +470,6 @@ the BED decoder first converts PLINK two-bit values to source-`a1` counts as:
 11 -> 0
 ```
 
-The optional `bed_path` argument lets callers read genotype payloads from a
-different location while reusing the cached/aligned metadata. It may identify a
-single `.bed` file or a sharded path containing `@`, resolved by the same
-shard-label substitution rules as source loaders. A single `.bed` override is
-used for all addressed shards only when those addressed shards share the same
-recorded physical source layout, defined as equal `source_num_snp` and equal
-`source_num_sample` across all addressed shards. An `@` override resolves one
-`.bed` path per addressed shard and preserves sharded physical layout.
-
-Overrides must not convert between source layouts. Enforcement uses
-`GenotypePanel.source_layout`, not equality of stored `bed_path` values, because
-single-shard subsets of sharded metadata still have sharded physical layout:
-
-- `source_layout == "non_sharded"`: a flat override is accepted; an
-  `@`-containing override is an error.
-- `source_layout == "sharded"`: an `@`-sharded override is accepted; a flat
-  override is accepted only when all addressed shards pass the layout equality
-  check (`source_num_snp` and `source_num_sample` equal across all addressed
-  shards), otherwise it is an error.
-
-The alternate `.bed`
-file(s) must have the same FAM/BIM structure and row order as the metadata
-object, including source allele orientation and any chrX sample subset.
-Stored swap flags still apply to a BED override. Since `.bed` files contain no
-manifest, the accessor can only validate basic structure: file existence, PLINK
-magic bytes, SNP-major mode, and file size for each addressed shard. The
-accessor validates that the actual disk size of each addressed `.bed` file
-equals the `bed_file_size` stored in the shard metadata; size mismatch is an
-error.
-
 ## API
 
 ```text
@@ -476,7 +477,7 @@ load_genotype(bfile_prefix, reference, optional allow_indel_swaps=false,
               optional match_by="genomic_position")
     -> GenotypePanel
 save_genotype_cache(panel, path) -> void
-load_genotype_cache(path, optional shards) -> GenotypePanel
+load_genotype_cache(path, optional shards, optional bed_path) -> GenotypePanel
 
 GenotypePanel.num_snp -> int
 GenotypePanel.is_present -> num_snp logical vector
@@ -492,9 +493,9 @@ GenotypePanel.sex -> num_sample vector preserving FAM values 1, 2, or 0
 GenotypePanel.is_male -> num_sample logical vector
 GenotypePanel.is_female -> num_sample logical vector
 GenotypePanel.is_subject_present(shard) -> num_sample logical vector
-GenotypePanel.fetch_genotypes_int8(snp_indices, optional bed_path)
+GenotypePanel.fetch_genotypes_int8(snp_indices)
     -> num_sample × len(snp_indices) int8 matrix
-GenotypePanel.fetch_genotypes(snp_indices, optional bed_path, optional haploid_mode)
+GenotypePanel.fetch_genotypes(snp_indices, optional haploid_mode)
     -> num_sample × len(snp_indices) double matrix
 GenotypePanel.source_layout -> "non_sharded" | "sharded"
 GenotypePanel.select_shards(shards) -> GenotypePanel
@@ -542,10 +543,10 @@ Expected behavior:
   and PLOIDY files and to fetch hardcalls from BED on demand.
 - `GenotypePanel.save_cache(...)` is a thin convenience method equivalent to
   `save_genotype_cache(panel, ...)`.
-- `load_genotype_cache` performs cache-internal validation only and supports
-  optional `shards` subsetting; per-shard reference checksums and BED file-size
-  metadata are trusted from cache metadata until a genotype fetch addresses the
-  corresponding shard.
+- `load_genotype_cache` supports optional `shards` subsetting and an optional
+  `bed_path` override. It validates cache metadata and checks selected BED files
+  without reading their content; per-shard reference checksums are trusted from
+  cache metadata.
 - `GenotypePanel.fetch_genotypes_int8` reads hardcalls on demand, returns raw
   diploid-scale `int8` reference-`a1` counts with `-1` for missing calls, and
   fails on any requested SNP where `is_present == false`.

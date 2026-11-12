@@ -171,7 +171,7 @@ def test_r_genotype_fetch_rejects_absent_snp_and_bad_nonsharded_override(tmp_pat
             f"g_absent <- suppressWarnings(load_genotype({json.dumps(str(tmp_path / 'all'))}, ref)); "
             f"g_flat <- load_genotype({json.dumps(str(G_NONSHARDED))}, load_reference({json.dumps(str(REF_NONSHARDED))})); "
             "ok1 <- FALSE; tryCatch(fetch_genotypes_int8(g_absent, 6), error = function(e) ok1 <<- grepl('not present', e$message)); "
-            f"ok2 <- FALSE; tryCatch(fetch_genotypes_int8(g_flat, 1, bed_path = {json.dumps(str(FIXTURES_DIR / 'genotype/sharded/@.bed'))}), error = function(e) ok2 <<- grepl('@ override incompatible', e$message)); "
+            f"save_genotype_cache(g_flat, {json.dumps(str(tmp_path / 'flat.rds'))}); ok2 <- FALSE; tryCatch(load_genotype_cache({json.dumps(str(tmp_path / 'flat.rds'))}, bed_path = {json.dumps(str(FIXTURES_DIR / 'genotype/sharded/@.bed'))}), error = function(e) ok2 <<- grepl('@ override incompatible', e$message)); "
             "cat(as.character(ok1), as.character(ok2), '\\n')"
         )
     )
@@ -289,7 +289,7 @@ def test_r_genotype_ploidy_scaled_unknown_sex_scales_only_equal_ploidy_snps():
 
 @pytest.mark.r
 @skipif_no_rscript
-def test_r_genotype_cache_load_is_lazy_and_override_fetches(tmp_path):
+def test_r_genotype_cache_warns_for_missing_bed_and_override_fetches(tmp_path):
     copy_sharded_genotype(tmp_path)
     cache = tmp_path / "genotype.rds"
     result = run_rscript(
@@ -300,7 +300,7 @@ def test_r_genotype_cache_load_is_lazy_and_override_fetches(tmp_path):
             f"invisible(file.remove({json.dumps(str(tmp_path / '1.bed'))}, {json.dumps(str(tmp_path / 'X.bed'))})); "
             f"h <- load_genotype_cache({json.dumps(str(cache))}); "
             "ok1 <- FALSE; tryCatch(fetch_genotypes_int8(h, 1), error = function(e) ok1 <<- grepl('File not found', e$message)); "
-            f"gi <- fetch_genotypes_int8(h, c(1, 6), bed_path = {json.dumps(str(FIXTURES_DIR / 'genotype/sharded/@.bed'))}); "
+            f"h <- load_genotype_cache({json.dumps(str(cache))}, bed_path = {json.dumps(str(FIXTURES_DIR / 'genotype/sharded/@.bed'))}); gi <- fetch_genotypes_int8(h, c(1, 6)); "
             "cat(num_snp(h), '\\n'); "
             "cat(as.character(ok1), '\\n'); "
             "cat(paste(as.integer(gi), collapse=','), '\\n')"

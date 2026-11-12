@@ -185,9 +185,9 @@ def test_cache_fixture_legacy_migration_and_swapped_overrides(tmp_path):
     for file in source.iterdir():
         script += f"delete('{file}'); "
     script += (
-        f"h = statgen.load_genotype_cache('{cache}'); "
-        f"assert(isequal(h.fetch_genotypes_int8(requested, '{ROOT / 'genotype/@.bed'}'), expected)); "
-        f"assert(isequaln(h.fetch_genotypes(requested, '{ROOT / 'genotype/@.bed'}', 'ploidy_scaled'), fixture.fetch_genotypes(requested, 'ploidy_scaled'))); "
+        f"h = statgen.load_genotype_cache('{cache}', [], '{ROOT / 'genotype/@.bed'}'); "
+        f"assert(isequal(h.fetch_genotypes_int8(requested), expected)); "
+        f"assert(isequaln(h.fetch_genotypes(requested, 'ploidy_scaled'), fixture.fetch_genotypes(requested, 'ploidy_scaled'))); "
         f"old = statgen.load_genotype_cache('{FIXTURES_DIR / 'cache/genotype_matlab_genotype_cache_0_1.mat'}'); "
         "assert(~any(old.is_allele_swapped)); "
         "assert(isequal(old.fetch_genotypes_int8([1 6 1]), int8(2 * ones(4,3)))); "
@@ -260,7 +260,7 @@ def test_nonsharded_physical_rows_and_ploidy_survive_reference_projection(tmp_pa
         "assert(isequal(g.fetch_genotypes_int8([1 3 1]), int8([2 2 2;1 1 1;0 0 0;-1 -1 -1]))); "
         "assert(isequaln(g.fetch_genotypes([1 3], 'ploidy_scaled'), [1 0;1 0.5;0 0;NaN NaN])); "
         f"g.save_cache('{cache}'); h = statgen.load_genotype_cache('{cache}'); "
-        f"assert(isequal(h.fetch_genotypes_int8([1 3 1], '{prefix.with_suffix('.bed')}'), g.fetch_genotypes_int8([1 3 1])));"
+        f"assert(isequal(h.fetch_genotypes_int8([1 3 1]), g.fetch_genotypes_int8([1 3 1])));"
     )
 
 

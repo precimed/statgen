@@ -15,8 +15,8 @@ ploidy_female <- function(x, ...) UseMethod("ploidy_female")
 source_layout <- function(x, ...) UseMethod("source_layout")
 source_row0 <- function(x, ...) UseMethod("source_row0")
 is_subject_present <- function(x, shard, ...) UseMethod("is_subject_present")
-fetch_genotypes_int8 <- function(x, snp_indices, bed_path = NULL, ...) UseMethod("fetch_genotypes_int8")
-fetch_genotypes <- function(x, snp_indices, bed_path = NULL, haploid_mode = NULL, ...) UseMethod("fetch_genotypes")
+fetch_genotypes_int8 <- function(x, snp_indices, ...) UseMethod("fetch_genotypes_int8")
+fetch_genotypes <- function(x, snp_indices, haploid_mode = NULL, ...) UseMethod("fetch_genotypes")
 
 load_genotype <- function(bfile_prefix, reference, allow_indel_swaps = FALSE, match_by = "genomic_position") {
   allow_indel_swaps <- .validate_matching_options(match_by, allow_indel_swaps)
@@ -161,7 +161,7 @@ save_genotype_cache <- function(panel, path) {
   invisible(NULL)
 }
 
-load_genotype_cache <- function(path, shards = NULL) {
+load_genotype_cache <- function(path, shards = NULL, bed_path = NULL) {
   path <- .validate_path_scalar(path, "path")
   payload <- readRDS(path)
   .validate_genotype_cache_payload(payload)
@@ -169,6 +169,17 @@ load_genotype_cache <- function(path, shards = NULL) {
   swap_flags <- if (meta$schema == .genotype_cache_schema) payload$is_allele_swapped else rep.int(FALSE, length(payload$is_present))
   selected <- .validate_requested_shards(shards, meta$shard_labels, "load_genotype_cache")
   label_to_index <- stats::setNames(seq_along(meta$shard_labels), meta$shard_labels)
+
+  indices <- unname(label_to_index[selected])
+  paths <- .resolve_bed_paths(meta, indices, bed_path)
+  info <- file.info(paths)
+  bad <- is.na(info$size) | info$isdir | info$size != meta$bed_file_sizes[indices]
+  bad[is.na(bad)] <- TRUE
+  if (any(bad)) {
+    msg <- paste("Missing or incorrectly sized BED files:", paste(unique(paths[bad]), collapse = ", "))
+    if (!is.null(bed_path)) stop(msg, call. = FALSE)
+    warning(msg, call. = FALSE)
+  }
 
   out <- vector("list", length(selected))
   for (i in seq_along(selected)) {
@@ -178,7 +189,7 @@ load_genotype_cache <- function(path, shards = NULL) {
     stop <- meta$shard_stop0[[idx]]
     out[[i]] <- .new_genotype_shard(
       label = label,
-      bed_path = meta$bed_paths[[idx]],
+      bed_path = paths[[i]],
       bed_file_size = meta$bed_file_sizes[[idx]],
       source_num_snp = meta$source_num_snp[[idx]],
       source_num_sample = meta$source_num_sample[[idx]],
@@ -253,7 +264,8 @@ select_shards.GenotypePanel <- function(x, shards, ...) {
   )
 }
 
-fetch_genotypes_int8.GenotypePanel <- function(x, snp_indices, bed_path = NULL, ...) {
+fetch_genotypes_int8.GenotypePanel <- function(x, snp_indices, ...) {
+  if (length(list(...))) stop("Unexpected fetch arguments", call. = FALSE)
   indices <- .normalize_genotype_indices(snp_indices, x$num_snp)
   out <- matrix(.bed_missing_int, nrow = x$num_sample, ncol = length(indices))
   if (!length(indices)) {
@@ -261,12 +273,11 @@ fetch_genotypes_int8.GenotypePanel <- function(x, snp_indices, bed_path = NULL, 
     return(out)
   }
   addressed <- .addressed_genotype_shards(x, indices)
-  bed_paths <- .resolve_fetch_bed_paths(x, addressed, bed_path)
   .validate_requested_genotype_present(x, addressed)
 
   for (entry in addressed) {
     shard <- entry$shard
-    effective_bed <- bed_paths[[shard$label]]
+    effective_bed <- shard$bed_path
     .validate_bed_file(effective_bed, shard$source_num_sample, shard$source_num_snp)
     source_rows <- shard$source_row0[entry$local_indices]
     source_geno <- .read_bed_rows_int8_codes(effective_bed, source_rows, shard$source_num_sample)
@@ -286,13 +297,14 @@ fetch_genotypes_int8.GenotypePanel <- function(x, snp_indices, bed_path = NULL, 
   out
 }
 
-fetch_genotypes.GenotypePanel <- function(x, snp_indices, bed_path = NULL, haploid_mode = NULL, ...) {
+fetch_genotypes.GenotypePanel <- function(x, snp_indices, haploid_mode = NULL, ...) {
+  if (length(list(...))) stop("Unexpected fetch arguments", call. = FALSE)
   mode <- if (is.null(haploid_mode)) "raw" else as.character(haploid_mode)
   if (length(mode) != 1L || is.na(mode) || !(mode %in% .haploid_modes)) {
     stop("GenotypePanel.fetch_genotypes: haploid_mode must be 'raw' or 'ploidy_scaled'", call. = FALSE)
   }
   indices <- .normalize_genotype_indices(snp_indices, x$num_snp)
-  gi <- fetch_genotypes_int8(x, indices, bed_path = bed_path)
+  gi <- fetch_genotypes_int8(x, indices)
   out <- matrix(as.numeric(gi), nrow = nrow(gi), ncol = ncol(gi))
   out[gi == .bed_missing_int] <- NaN
   if (identical(mode, "ploidy_scaled")) {
@@ -624,31 +636,26 @@ print.GenotypePanel <- function(x, ...) {
   out
 }
 
-.resolve_fetch_bed_paths <- function(panel, addressed, bed_path) {
+.resolve_bed_paths <- function(meta, indices, bed_path) {
   if (is.null(bed_path)) {
-    out <- lapply(addressed, function(entry) entry$shard$bed_path)
-    names(out) <- vapply(addressed, function(entry) entry$shard$label, character(1))
-    return(out)
+    return(meta$bed_paths[indices])
   }
+  labels <- meta$shard_labels[indices]
   override <- .validate_path_scalar(bed_path, "bed_path")
   if (grepl("@", override, fixed = TRUE)) {
-    if (identical(panel$source_layout, "non_sharded")) {
-      stop("GenotypePanel.fetch_genotypes: @ override incompatible with non-sharded panel metadata", call. = FALSE)
+    if (identical(meta$source_layout, "non_sharded")) {
+      stop("load_genotype_cache: @ override incompatible with non-sharded panel metadata", call. = FALSE)
     }
-    out <- lapply(addressed, function(entry) gsub("@", entry$shard$label, override, fixed = TRUE))
-    names(out) <- vapply(addressed, function(entry) entry$shard$label, character(1))
-    return(out)
+    return(vapply(labels, function(label) gsub("@", label, override, fixed = TRUE), character(1)))
   }
-  if (identical(panel$source_layout, "sharded") && length(addressed)) {
-    nsnp <- unique(vapply(addressed, function(entry) entry$shard$source_num_snp, integer(1)))
-    nsample <- unique(vapply(addressed, function(entry) entry$shard$source_num_sample, integer(1)))
+  if (identical(meta$source_layout, "sharded") && length(indices)) {
+    nsnp <- unique(meta$source_num_snp[indices])
+    nsample <- unique(meta$source_num_sample[indices])
     if (length(nsnp) != 1L || length(nsample) != 1L) {
-      stop("GenotypePanel.fetch_genotypes: flat bed_path override requires equal source_num_snp and source_num_sample across addressed shards", call. = FALSE)
+      stop("load_genotype_cache: flat bed_path override requires equal source_num_snp and source_num_sample across selected shards", call. = FALSE)
     }
   }
-  out <- rep(list(override), length(addressed))
-  names(out) <- vapply(addressed, function(entry) entry$shard$label, character(1))
-  out
+  rep(override, length(indices))
 }
 
 .validate_requested_genotype_present <- function(panel, addressed) {

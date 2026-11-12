@@ -214,8 +214,8 @@ R SNP indices are one-based. Genotype matrices have samples as rows and
 requested SNPs as columns. Calls use the raw diploid scale by default; pass
 `haploid_mode = "ploidy_scaled"` to adjust for biological ploidy.
 
-When using a genotype metadata cache, the original BED files must still be
-available. If they moved, pass a replacement `bed_path` to the fetch function.
+When using a genotype metadata cache, BED files must be available to fetch calls.
+If they moved, pass a replacement `bed_path` to `load_genotype_cache`.
 
 ## Save R Caches
 

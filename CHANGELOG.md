@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking API change:** BED path overrides now belong to
+  `load_genotype_cache(..., bed_path=...)`, not genotype fetch calls. Loading
+  warns about missing or incorrectly sized stored BED paths and rejects invalid
+  override paths; fetch still requires valid BED files. Fixes
+  [#22](https://github.com/precimed/statgen/issues/22).
+
 ## [0.4.2] - 2026-11-08
 
 ### Added

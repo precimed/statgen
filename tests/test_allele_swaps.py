@@ -115,14 +115,14 @@ def test_shared_swap_oracle(enabled, tmp_path, capsys):
     meta["bed_paths"] = [str(tmp_path / f"gone{label}.bed") for label in ("1", "X")]
     arrays["_meta"] = np.frombuffer(json.dumps(meta).encode(), dtype=np.uint8)
     np.savez(cache, **arrays)
-    loaded = load_genotype_cache(cache)
+    loaded = load_genotype_cache(cache, bed_path=str(ROOT / "genotype/@.bed"))
     np.testing.assert_array_equal(
-        loaded.fetch_genotypes_int8(requested, bed_path=str(ROOT / "genotype/@.bed")), int_expected)
-    for subset in (loaded.select_shards(["X"]), load_genotype_cache(cache, shards=["X"])):
+        loaded.fetch_genotypes_int8(requested), int_expected)
+    for subset in (loaded.select_shards(["X"]), load_genotype_cache(cache, shards=["X"], bed_path=str(ROOT / "genotype/@.bed"))):
         np.testing.assert_array_equal(subset.is_allele_swapped, genotype.is_allele_swapped[13:])
         req = [0, 0, 1] + ([2] if enabled else [])
         np.testing.assert_allclose(
-            subset.fetch_genotypes(req, bed_path=str(ROOT / "genotype/@.bed"), haploid_mode="ploidy_scaled"),
+            subset.fetch_genotypes(req, haploid_mode="ploidy_scaled"),
             _as_float(expected["scaled_counts"])[:, np.array(req) + 13], equal_nan=True)
     stats_cache = tmp_path / "stats.npz"
     stats.save_cache(stats_cache)

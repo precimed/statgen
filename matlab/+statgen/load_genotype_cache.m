@@ -1,20 +1,25 @@
-function panel = load_genotype_cache(path, shards)
+function panel = load_genotype_cache(path, shards, bed_path)
 %LOAD_GENOTYPE_CACHE Load cached genotype metadata.
 %
 %   genotype = statgen.load_genotype_cache(path)
 %   genotype = statgen.load_genotype_cache(path, shards)
+%   genotype = statgen.load_genotype_cache(path, shards, bed_path)
 %
 % Loads one MATLAB .mat GenotypePanel cache file produced by
 % statgen.save_genotype_cache. The cache stores metadata and source BED paths,
 % not dense genotype calls. Optional shards return a logical subset of the
-% cached shard labels. Fetching genotypes still requires the original BED files,
-% or an explicit BED path override in fetch_genotypes.
+% cached shard labels. bed_path replaces cached BED paths, using @ for shards.
+% Missing or incorrectly sized stored files warn; invalid overrides fail.
 %
 % See also statgen.GenotypePanel, statgen.load_genotype,
 % statgen.save_genotype_cache.
     if nargin < 2
         shards = [];
     end
+    if nargin < 3
+        bed_path = [];
+    end
+    bed_path = parse_bed_path_(bed_path);
     path = char(path);
     loaded = load(path);
     require_fields_(loaded, {'metadata', 'is_present', 'ploidy_male', 'ploidy_female', ...
@@ -76,19 +81,82 @@ function panel = load_genotype_cache(path, shards)
     source_subject_row0 = double(loaded.source_subject_row0);
 
     selected = statgen.internal.validate_requested_shards(shards, labels, 'load_genotype_cache');
+    selected_idx = zeros(numel(selected), 1);
+    for i = 1:numel(selected)
+        selected_idx(i) = find(strcmp(labels, selected{i}), 1, 'first');
+    end
+    has_override = ~isempty(bed_path);
+    paths = resolve_bed_paths_(source_layout, selected, bed_paths(selected_idx), ...
+        source_num_snp(selected_idx), source_num_sample(selected_idx), bed_path);
+    bad = {};
+    for i = 1:numel(selected)
+        info = dir(paths{i});
+        if numel(info) ~= 1 || info.isdir || info.bytes ~= bed_file_sizes(selected_idx(i))
+            bad{end + 1} = paths{i}; %#ok<AGROW>
+        end
+    end
+    if ~isempty(bad)
+        message = ['load_genotype_cache: Missing or incorrectly sized BED files: ' strjoin(unique(bad, 'stable'), ', ')];
+        if has_override
+            error('statgen:cache', '%s', message);
+        end
+        warning('statgen:cache', '%s', message);
+    end
     out_shards = cell(numel(selected), 1);
     for i = 1:numel(selected)
         label = selected{i};
         idx = find(strcmp(labels, label), 1, 'first');
         ix = (start0(idx) + 1):stop0(idx);
         out_shards{i} = statgen.GenotypeShard( ...
-            labels{idx}, bed_paths{idx}, bed_file_sizes(idx), ...
+            labels{idx}, paths{i}, bed_file_sizes(idx), ...
             source_num_snp(idx), source_num_sample(idx), ...
             source_row0(ix), subject_present(:, idx), source_subject_row0(:, idx), ...
             is_present(ix), is_allele_swapped(ix), ploidy_male(ix), ploidy_female(ix), checksums{idx});
     end
 
     panel = statgen.GenotypePanel(out_shards, fid, iid, father_id, mother_id, sex, source_layout);
+end
+
+function bed_path = parse_bed_path_(bed_path)
+    if isstring(bed_path)
+        if ~isscalar(bed_path)
+            error('statgen:cache', 'load_genotype_cache: bed_path must be a string scalar');
+        end
+        bed_path = char(bed_path);
+    elseif ~isempty(bed_path) && ~ischar(bed_path)
+        error('statgen:cache', 'load_genotype_cache: bed_path must be a character vector');
+    end
+end
+
+function bed_paths = resolve_bed_paths_(source_layout, labels, stored_paths, source_num_snp, source_num_sample, bed_path)
+    bed_paths = cell(numel(labels), 1);
+    if isempty(bed_path)
+        bed_paths = stored_paths;
+        return
+    end
+
+    if ~isempty(strfind(bed_path, '@'))
+        if strcmp(source_layout, 'non_sharded')
+            error('statgen:cache', ...
+                'load_genotype_cache: @ override incompatible with non-sharded panel metadata');
+        end
+        for i = 1:numel(labels)
+            bed_paths{i} = strrep(bed_path, '@', labels{i});
+        end
+        return
+    end
+
+    if strcmp(source_layout, 'sharded') && ~isempty(labels)
+        if numel(unique(source_num_snp)) ~= 1 || numel(unique(source_num_sample)) ~= 1
+            error('statgen:cache', ...
+                ['load_genotype_cache: flat bed_path override requires equal ' ...
+                 'source_num_snp and source_num_sample across selected shards']);
+        end
+    end
+
+    for i = 1:numel(labels)
+        bed_paths{i} = bed_path;
+    end
 end
 
 function require_fields_(loaded, fields)

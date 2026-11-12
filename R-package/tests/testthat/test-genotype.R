@@ -74,17 +74,18 @@ test_that("genotype metadata cache round-trips", {
   file.copy(file.path(root, "gX.bed"), file.path(root, "overrideX.bed"))
   unlink(file.path(root, "g1.bed"))
   unlink(file.path(root, "gX.bed"))
-  loaded <- load_genotype_cache(cache)
-  loaded_x <- load_genotype_cache(cache, shards = "X")
+  expect_warning(loaded <- load_genotype_cache(cache), "Missing or incorrectly sized")
+  loaded_x <- load_genotype_cache(cache, shards = "X", bed_path = override)
+  relocated <- load_genotype_cache(cache, bed_path = override)
 
   expect_equal(source_layout(loaded), source_layout(g))
   expect_equal(source_row0(loaded), source_row0(g))
   expect_equal(fid(loaded), fid(g))
   expect_error(fetch_genotypes_int8(loaded, 1), "File not found")
-  expect_equal(fetch_genotypes_int8(loaded, c(1, 6), bed_path = override), fetch_genotypes_int8(g, c(1, 6), bed_path = override))
+  expect_equal(fetch_genotypes_int8(relocated, c(1, 6)), matrix(2L, 4, 2))
   expect_equal(num_snp(loaded_x), 3L)
   expect_equal(source_layout(loaded_x), "sharded")
-  expect_equal(fetch_genotypes_int8(loaded_x, 1, bed_path = override), fetch_genotypes_int8(g, 6, bed_path = override))
+  expect_equal(fetch_genotypes_int8(loaded_x, 1), fetch_genotypes_int8(relocated, 6))
 })
 
 test_that("genotype validation rejects bad sex and malformed cache", {

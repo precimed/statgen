@@ -195,7 +195,8 @@ mappings, and orientation without rematching. Reload sources to change the
 matching mode. Cache formats and reference checksums are unchanged.
 
 Genotype caches contain metadata, so BED files are still needed to fetch
-calls. If you move a BED file, supply its new location with `bed_path`.
+calls. If you move a BED file, supply its new location with `bed_path` when
+calling `load_genotype_cache`.
 A replacement must preserve the original variant and sample layout and allele
 order, including any chromosome-specific sample subsets. Stored swap flags
 still apply to the replacement BED data.

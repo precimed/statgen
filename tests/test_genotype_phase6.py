@@ -17,6 +17,10 @@ def test_octave_genotype_cache_roundtrip_preserves_metadata_and_fetch(tmp_path):
         f"g = statgen.load_genotype('{G_SHARDED}', ref); "
         f"statgen.save_genotype_cache(g, '{cache}', 'format', 'v5'); "
         f"h = statgen.load_genotype_cache('{cache}'); "
+        f"empty_override = statgen.load_genotype_cache('{cache}', [], ''); "
+        "assert(isequal(empty_override.fetch_genotypes_int8(1), g.fetch_genotypes_int8(1))); "
+        f"if exist('string', 'builtin'); empty_override = statgen.load_genotype_cache('{cache}', [], string('')); "
+        "assert(isequal(empty_override.fetch_genotypes_int8(1), g.fetch_genotypes_int8(1))); end; "
         "same_meta = strcmp(h.source_layout, g.source_layout) && h.num_snp == g.num_snp && h.num_sample == g.num_sample; "
         "same_meta = same_meta && isequal(h.is_present, g.is_present) && isequaln(h.ploidy_male, g.ploidy_male); "
         "same_meta = same_meta && isequal(h.source_row0, g.source_row0) && isequal(h.fid, g.fid); "
@@ -87,7 +91,7 @@ def test_octave_genotype_cache_loads_without_source_sidecars_and_fetches_with_ov
         f"delete('{source_dir / 'X.ploidy'}'); "
         f"h = statgen.load_genotype_cache('{cache}'); "
         "ok_load = strcmp(h.source_layout, 'sharded') && h.num_snp == 8 && h.num_sample == 4; "
-        f"gi = h.fetch_genotypes_int8([1 6], '{FIXTURES_DIR / 'genotype/sharded/@.bed'}'); "
+        f"h = statgen.load_genotype_cache('{cache}', [], '{FIXTURES_DIR / 'genotype/sharded/@.bed'}'); gi = h.fetch_genotypes_int8([1 6]); "
         "fprintf('%d %d %d\\n', ok_load, size(gi, 1), size(gi, 2)); "
         "fprintf('%d ', gi); fprintf('\\n');"
     )
@@ -107,8 +111,8 @@ def test_octave_genotype_cache_subset_preserves_sample_axis_source_layout_and_fe
         f"ref = statgen.load_reference('{REF_SHARDED}'); "
         f"g = statgen.load_genotype('{G_SHARDED}', ref); "
         f"statgen.save_genotype_cache(g, '{cache}'); "
-        f"h = statgen.load_genotype_cache('{cache}', {{'X'}}); "
-        f"gi = h.fetch_genotypes_int8([1 3 1], '{FIXTURES_DIR / 'genotype/sharded/@.bed'}'); "
+        f"h = statgen.load_genotype_cache('{cache}', {{'X'}}, '{FIXTURES_DIR / 'genotype/sharded/@.bed'}'); "
+        "gi = h.fetch_genotypes_int8([1 3 1]); "
         "fprintf('%s %s %d %d\\n', h.source_layout, h.shards{1}.label, h.num_snp, h.num_sample); "
         "fprintf('%d ', h.is_subject_present('X')); fprintf('\\n'); "
         "fprintf('%d ', gi); fprintf('\\n');"
@@ -153,3 +157,20 @@ def test_octave_genotype_cache_validation_failures(tmp_path):
     result = run_octave(script)
     assert result.returncode == 0, result.stderr
     assert matlab_data_lines(result.stdout) == ["1 1 1 1"]
+
+
+@pytest.mark.octave
+@skipif_no_octave
+def test_cache_missing_bed_warning_preserves_shard_order(tmp_path):
+    cache = tmp_path / "genotype.mat"
+    first, second = tmp_path / "z.bed", tmp_path / "a.bed"
+    script = (
+        f"ref = statgen.load_reference('{REF_SHARDED}'); "
+        f"g = statgen.load_genotype('{G_SHARDED}', ref); g.save_cache('{cache}'); "
+        f"data = load('{cache}'); data.metadata.bed_paths = {{'{first}'; '{second}'}}; "
+        f"save('{cache}', '-struct', 'data'); lastwarn(''); "
+        f"statgen.load_genotype_cache('{cache}'); [message, ~] = lastwarn(); "
+        f"assert(strfind(message, '{first}') < strfind(message, '{second}'));"
+    )
+    result = run_octave(script)
+    assert result.returncode == 0, result.stderr

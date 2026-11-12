@@ -3,13 +3,14 @@ import math
 import numpy as np
 import pytest
 
-from statgen.genotype import load_genotype
+from statgen.genotype import load_genotype, load_genotype_cache
 from statgen.reference import load_reference
 from tests.conftest import (
     FIXTURES_DIR,
     GENOTYPE_CHR1_CALLS,
     GENOTYPE_CHR1_BIM,
     copy_genotype_shard_files,
+    copy_sharded_genotype,
     write_plink_bim,
     write_plink_bed_calls,
     write_plink_fam,
@@ -236,10 +237,14 @@ def test_absent_snp_fails_before_reading_bed_payload(tmp_path):
     )
     (tmp_path / "extra.bim").write_text(extra_bim)
     ref = load_reference(tmp_path / "extra.bim")
-    panel = load_genotype(G_SHARDED, ref)
+    source = tmp_path / "source"
+    source.mkdir()
+    copy_sharded_genotype(source)
+    panel = load_genotype(str(source / "@"), ref)
+    (source / "1.bed").unlink()
 
     with pytest.raises(ValueError, match="not present in the genotype source"):
-        panel.fetch_genotypes_int8([5], bed_path=tmp_path / "missing.bed")
+        panel.fetch_genotypes_int8([5])
 
 
 def test_absent_snp_error_reports_panel_global_index_for_later_shard(tmp_path):
@@ -249,20 +254,23 @@ def test_absent_snp_error_reports_panel_global_index_for_later_shard(tmp_path):
         + "X\trsX004\t0\t400\tG\tA\n"
     )
     ref = load_reference(str(tmp_path / "@.bim"))
-    panel = load_genotype(G_SHARDED, ref)
+    source = tmp_path / "source"
+    source.mkdir()
+    copy_sharded_genotype(source)
+    panel = load_genotype(str(source / "@"), ref)
+    (source / "X.bed").unlink()
 
     with pytest.raises(ValueError, match=r"requested SNP 8 in shard 'X' is not present"):
-        panel.fetch_genotypes_int8([8], bed_path=tmp_path / "missing.bed")
+        panel.fetch_genotypes_int8([8])
 
 
-def test_flat_bed_override_works_for_nonsharded_panel():
+def test_flat_bed_override_works_for_nonsharded_panel(tmp_path):
     ref = load_reference(REF_SHARDED)
     panel = load_genotype(G_NONSHARDED, ref)
 
-    geno = panel.fetch_genotypes_int8(
-        [0, 5],
-        bed_path=FIXTURES_DIR / "genotype/nonsharded/all.bed",
-    )
+    cache = tmp_path / "g.npz"
+    panel.save_cache(cache)
+    geno = load_genotype_cache(cache, bed_path=FIXTURES_DIR / "genotype/nonsharded/all.bed").fetch_genotypes_int8([0, 5])
     assert np.array_equal(geno, np.full((4, 2), 2, dtype=np.int8))
 
 
@@ -278,16 +286,18 @@ def test_nonsharded_fetches_chrx_snps_from_shared_bed_without_override():
     assert np.array_equal(geno, np.full((4, 3), 2, dtype=np.int8))
 
 
-def test_at_bed_override_works_for_sharded_panel_and_single_shard_subset():
+def test_at_bed_override_works_for_sharded_panel_and_single_shard_subset(tmp_path):
     ref = load_reference(REF_SHARDED)
     panel = load_genotype(G_SHARDED, ref)
     pattern = str(FIXTURES_DIR / "genotype/sharded/@.bed")
 
-    geno = panel.fetch_genotypes_int8([0, 5], bed_path=pattern)
+    cache = tmp_path / "g.npz"
+    panel.save_cache(cache)
+    geno = load_genotype_cache(cache, bed_path=pattern).fetch_genotypes_int8([0, 5])
     assert np.array_equal(geno, np.full((4, 2), 2, dtype=np.int8))
 
-    chrx = panel.select_shards(["X"])
-    x_geno = chrx.fetch_genotypes_int8([0], bed_path=pattern)
+    chrx = load_genotype_cache(cache, shards=["X"], bed_path=pattern)
+    x_geno = chrx.fetch_genotypes_int8([0])
     assert np.array_equal(x_geno, np.full((4, 1), 2, dtype=np.int8))
 
 
@@ -295,34 +305,40 @@ def test_at_override_against_nonsharded_panel_fails_before_reading(tmp_path):
     ref = load_reference(REF_SHARDED)
     panel = load_genotype(G_NONSHARDED, ref)
 
+    cache = tmp_path / "g.npz"
+    panel.save_cache(cache)
     with pytest.raises(ValueError, match="@ override incompatible with non-sharded"):
-        panel.fetch_genotypes_int8([0], bed_path=str(tmp_path / "@.bed"))
+        load_genotype_cache(cache, bed_path=str(tmp_path / "@.bed"))
 
 
 def test_flat_override_against_unequal_sharded_sources_fails_before_reading(tmp_path):
     ref = load_reference(REF_SHARDED)
     panel = load_genotype(G_SHARDED, ref)
 
-    with pytest.raises(ValueError, match="flat bed_path override requires equal"):
-        panel.fetch_genotypes_int8([0, 5], bed_path=tmp_path / "flat.bed")
+    cache = tmp_path / "g.npz"
+    panel.save_cache(cache)
+    with pytest.raises(ValueError, match="equal source_num_snp and source_num_sample across selected shards"):
+        load_genotype_cache(cache, bed_path=tmp_path / "flat.bed")
 
 
 def test_bed_override_size_and_header_validation(tmp_path):
     ref = load_reference(REF_SHARDED, shards=["1"])
     panel = load_genotype(G_SHARDED, ref)
+    cache = tmp_path / "g.npz"
+    panel.save_cache(cache)
     expected_size = 3 + 5
 
     bad_magic = tmp_path / "bad_magic.bed"
     bad_magic.write_bytes(b"\x00\x00\x01" + b"\x00" * (expected_size - 3))
     with pytest.raises(ValueError, match="invalid PLINK BED magic"):
-        panel.fetch_genotypes_int8([0], bed_path=bad_magic)
+        load_genotype_cache(cache, bed_path=bad_magic).fetch_genotypes_int8([0])
 
     sample_major = tmp_path / "sample_major.bed"
     sample_major.write_bytes(b"\x6c\x1b\x00" + b"\x00" * (expected_size - 3))
     with pytest.raises(ValueError, match="SNP-major mode"):
-        panel.fetch_genotypes_int8([0], bed_path=sample_major)
+        load_genotype_cache(cache, bed_path=sample_major).fetch_genotypes_int8([0])
 
     trailing = tmp_path / "trailing.bed"
     trailing.write_bytes(b"\x6c\x1b\x01" + b"\x00" * (expected_size - 2))
-    with pytest.raises(ValueError, match="BED file size mismatch"):
-        panel.fetch_genotypes_int8([0], bed_path=trailing)
+    with pytest.raises(ValueError, match="incorrectly sized"):
+        load_genotype_cache(cache, bed_path=trailing)

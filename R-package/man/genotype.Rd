@@ -27,7 +27,7 @@ panels, cache metadata, and fetch hardcall genotype slices from BED files.
 load_genotype(bfile_prefix, reference, allow_indel_swaps = FALSE,
   match_by = "genomic_position")
 save_genotype_cache(panel, path)
-load_genotype_cache(path, shards = NULL)
+load_genotype_cache(path, shards = NULL, bed_path = NULL)
 
 num_sample(x, ...)
 fid(x, ...)
@@ -44,9 +44,8 @@ source_row0(x, ...)
 is_allele_swapped(x, ...)
 is_subject_present(x, shard, ...)
 
-fetch_genotypes_int8(x, snp_indices, bed_path = NULL, ...)
-fetch_genotypes(x, snp_indices, bed_path = NULL,
-  haploid_mode = NULL, ...)
+fetch_genotypes_int8(x, snp_indices, ...)
+fetch_genotypes(x, snp_indices, haploid_mode = NULL, ...)
 }
 \arguments{
 \item{bfile_prefix}{Character scalar PLINK bfile prefix, without suffixes.
@@ -62,8 +61,9 @@ also require allele matching; see \link{allele_matching}.}
 \item{shards}{Optional character vector of shard labels in canonical order.}
 \item{shard}{A loaded shard label for subject-presence lookup.}
 \item{snp_indices}{One-based panel-global SNP indices.}
-\item{bed_path}{Optional BED path override. A sharded override may contain
-\code{@}.}
+\item{bed_path}{Optional cache-load BED path override. A sharded override may
+contain \code{@}. Missing or incorrectly sized overrides are errors; stored
+paths with those problems produce a warning.}
 \item{haploid_mode}{Optional output mode, \code{"raw"} or
 \code{"ploidy_scaled"}. The default is \code{"raw"}.}
 \item{...}{Reserved for S3 methods.}

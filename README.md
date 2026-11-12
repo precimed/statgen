@@ -235,7 +235,10 @@ matrix representation is stored in `.mat` files.
 - `panel.fid`, `panel.iid`, `panel.sex`, `panel.is_male`, and
   `panel.is_female` expose sample metadata.
 - `panel.save_cache(path)` and `load_genotype_cache(...)` save and reload
-  genotype metadata caches for faster repeated loading.
+  genotype metadata caches for faster repeated loading. Supply `bed_path` to
+  `load_genotype_cache` to replace stored BED paths (using `@` for sharded
+  paths). Missing or incorrectly sized stored BED files warn; invalid overrides
+  fail. Fetching requires valid BED files.
 
 ### Sumstats
 

@@ -134,8 +134,8 @@ Calls use the raw diploid scale by default; pass
 Counts, Z, beta, and EAF describe the reference panel's `a1` (ALT) allele;
 see the [allele matching guide](ALLELE_MATCHING.md).
 
-When using a genotype metadata cache, the original BED files must still be
-available. If they moved, pass a replacement `bed_path` to `fetch_genotypes`.
+When using a genotype metadata cache, BED files must be available to fetch calls.
+If they moved, pass a replacement `bed_path` to `load_genotype_cache`.
 
 ## Subset to One Chromosome
 

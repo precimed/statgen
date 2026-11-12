@@ -1,4 +1,5 @@
 import json
+import warnings
 
 import numpy as np
 import pytest
@@ -60,7 +61,7 @@ def test_genotype_cache_roundtrip_preserves_accessors_and_fetch(tmp_path):
     )
 
 
-def test_genotype_cache_load_is_lazy_for_missing_bed_and_override_fetches(tmp_path):
+def test_genotype_cache_warns_for_missing_bed_and_override_fetches(tmp_path):
     copy_sharded_genotype(tmp_path)
     ref = load_reference(REF_SHARDED)
     panel = load_genotype(str(tmp_path / "@"), ref)
@@ -70,17 +71,33 @@ def test_genotype_cache_load_is_lazy_for_missing_bed_and_override_fetches(tmp_pa
     (tmp_path / "1.bed").unlink()
     (tmp_path / "X.bed").unlink()
 
-    loaded = load_genotype_cache(cache)
+    with pytest.warns(UserWarning, match="Missing or incorrectly sized BED"):
+        loaded = load_genotype_cache(cache)
     assert loaded.num_snp == panel.num_snp
 
     with pytest.raises(FileNotFoundError):
         loaded.fetch_genotypes_int8([0])
 
-    geno = loaded.fetch_genotypes_int8(
-        [0, 5],
-        bed_path=str(FIXTURES_DIR / "genotype/sharded/@.bed"),
-    )
+    relocated = load_genotype_cache(cache, bed_path=str(FIXTURES_DIR / "genotype/sharded/@.bed"))
+    geno = relocated.fetch_genotypes_int8([0, 5])
+    moved_cache = tmp_path / "moved.npz"
+    relocated.save_cache(moved_cache)
+    np.testing.assert_array_equal(load_genotype_cache(moved_cache).fetch_genotypes_int8([0, 5]), geno)
     assert np.array_equal(geno, np.full((4, 2), 2, dtype=np.int8))
+
+
+def test_cache_checks_only_selected_shards(tmp_path):
+    copy_sharded_genotype(tmp_path)
+    panel = load_genotype(str(tmp_path / "@"), load_reference(REF_SHARDED))
+    cache = tmp_path / "genotype.npz"
+    panel.save_cache(cache)
+    (tmp_path / "1.bed").unlink()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        selected = load_genotype_cache(cache, shards=["X"])
+    assert selected.num_snp == 3
+    np.testing.assert_array_equal(selected.fetch_genotypes_int8([0]), np.full((4, 1), 2, dtype=np.int8))
 
 
 def test_genotype_cache_subset_preserves_panel_axis_and_chrx_mask(tmp_path):
@@ -205,3 +222,40 @@ def test_genotype_cache_validation_errors(tmp_path):
     _write_cache(zero_shard_cache, zero_shard_arrays, zero_shard_meta)
     with pytest.raises(ValueError, match="n_shards must be positive"):
         load_genotype_cache(zero_shard_cache)
+
+@pytest.mark.parametrize("sharded", [False, True])
+def test_cache_bed_path_validation_and_persistence(tmp_path, sharded):
+    ref = load_reference(REF_SHARDED)
+    prefix = G_SHARDED if sharded else FIXTURES_DIR / "genotype/nonsharded/all"
+    panel = load_genotype(prefix, ref)
+    cache = tmp_path / "cache.npz"
+    panel.save_cache(cache)
+    arrays = _load_cache_arrays(cache)
+    meta = json.loads(bytes(arrays["_meta"]))
+    meta["bed_paths"] = [str(tmp_path / (label + ".bed")) for label in meta["shard_labels"]]
+    _write_cache(cache, arrays, meta)
+
+    # Metadata inspection is possible even when all stored BEDs are missing.
+    with pytest.warns(UserWarning, match="Missing or incorrectly sized BED") as warnings_seen:
+        missing = load_genotype_cache(cache)
+    assert len(warnings_seen) == 1
+    assert missing.num_snp == panel.num_snp
+    with pytest.raises(FileNotFoundError):
+        missing.fetch_genotypes_int8([0])
+    with pytest.raises(ValueError, match="Missing or incorrectly sized BED"):
+        load_genotype_cache(cache, bed_path=tmp_path / ("@.bed" if sharded else "missing.bed"))
+
+    override = (FIXTURES_DIR / "genotype/sharded/@.bed" if sharded
+                else FIXTURES_DIR / "genotype/nonsharded/all.bed")
+    relocated = load_genotype_cache(cache, bed_path=override)
+    np.testing.assert_array_equal(relocated.fetch_genotypes_int8([0, 5]), panel.fetch_genotypes_int8([0, 5]))
+    saved = tmp_path / "relocated.npz"
+    relocated.save_cache(saved)
+    np.testing.assert_array_equal(load_genotype_cache(saved).fetch_genotypes_int8([0, 5]), panel.fetch_genotypes_int8([0, 5]))
+    selected = load_genotype_cache(cache, shards=["X"], bed_path=override)
+    np.testing.assert_array_equal(selected.fetch_genotypes_int8([0]), panel.select_shards(["X"]).fetch_genotypes_int8([0]))
+
+    wrong = tmp_path / "wrong.bed"
+    wrong.write_bytes(b"bad")
+    with pytest.raises(ValueError, match="incorrectly sized"):
+        load_genotype_cache(cache, shards=["X"], bed_path=wrong)

@@ -190,18 +190,15 @@ classdef GenotypePanel
                 obj.father_id, obj.mother_id, obj.sex, obj.source_layout);
         end
 
-        function out = fetch_genotypes_int8(obj, snp_indices, varargin)
+        function out = fetch_genotypes_int8(obj, snp_indices)
         %FETCH_GENOTYPES_INT8 Read selected genotype calls as int8.
         %
         %   G = genotype.fetch_genotypes_int8(snp_indices)
-        %   G = genotype.fetch_genotypes_int8(snp_indices, bed_path)
         %
         % Returns a num_sample-by-numel(snp_indices) matrix. Calls are encoded
         % as reference-a1 counts 0, 1, or 2; missing calls are -1. snp_indices are
-        % one-based panel SNP indices in MATLAB. bed_path overrides cached
-        % source BED paths and may contain '@' for sharded panels. Requesting a
+        % one-based panel SNP indices in MATLAB. Requesting a
         % reference SNP absent from the genotype source is an error.
-            bed_path = parse_bed_path_(varargin{:});
             indices0 = normalize_snp_indices_(snp_indices, obj.num_snp);
             out = int8(-ones(obj.num_sample, numel(indices0)));
             if isempty(indices0)
@@ -209,13 +206,12 @@ classdef GenotypePanel
             end
 
             addressed = addressed_shards_(obj, indices0);
-            bed_paths = resolve_bed_paths_(obj, addressed, bed_path);
             validate_requested_present_(obj, addressed);
 
             for i = 1:numel(addressed)
                 a = addressed{i};
                 shard = obj.shards{a.shard_index};
-                effective_bed = bed_paths{i};
+                effective_bed = shard.bed_path;
                 statgen.internal.bfile_validate_bed( ...
                     effective_bed, shard.source_num_sample, shard.source_num_snp);
                 source_rows0 = shard.source_row0(a.local_indices0 + 1);
@@ -240,9 +236,7 @@ classdef GenotypePanel
         %FETCH_GENOTYPES Read selected genotype calls as double.
         %
         %   G = genotype.fetch_genotypes(snp_indices)
-        %   G = genotype.fetch_genotypes(snp_indices, bed_path)
         %   G = genotype.fetch_genotypes(snp_indices, haploid_mode)
-        %   G = genotype.fetch_genotypes(snp_indices, bed_path, haploid_mode)
         %
         % Returns a num_sample-by-numel(snp_indices) matrix. Missing calls are
         % returned as NaN. haploid_mode is 'raw' by default. Use
@@ -250,14 +244,19 @@ classdef GenotypePanel
         % biological ploidy: male chrX with ploidy 1 maps 0/2 to 0/1, while
         % diploid calls stay 0/1/2.
         %
-        % snp_indices are one-based panel SNP indices in MATLAB. bed_path
-        % overrides cached source BED paths and may contain '@' for sharded
-        % panels. Requesting a reference SNP absent from the genotype source is
+        % snp_indices are one-based panel SNP indices in MATLAB. Requesting a
+        % reference SNP absent from the genotype source is
         % an error.
         %
         % See also statgen.GenotypePanel.fetch_genotypes_int8.
-            [bed_path, haploid_mode] = parse_fetch_genotypes_args_(varargin{:});
-            geno_int8 = obj.fetch_genotypes_int8(snp_indices, bed_path);
+            if numel(varargin) > 1
+                error('statgen:genotype', 'GenotypePanel.fetch_genotypes accepts at most haploid_mode');
+            end
+            haploid_mode = 'raw';
+            if ~isempty(varargin)
+                haploid_mode = normalize_haploid_mode_(varargin{1});
+            end
+            geno_int8 = obj.fetch_genotypes_int8(snp_indices);
             out = double(geno_int8);
             out(geno_int8 == int8(-1)) = NaN;
             if strcmp(haploid_mode, 'ploidy_scaled')
@@ -279,36 +278,6 @@ classdef GenotypePanel
         % See also statgen.save_genotype_cache, statgen.load_genotype_cache.
             statgen.save_genotype_cache(obj, path, varargin{:});
         end
-    end
-end
-
-function [bed_path, haploid_mode] = parse_fetch_genotypes_args_(varargin)
-    bed_path = [];
-    haploid_mode = 'raw';
-    if nargin == 0
-        return
-    elseif nargin == 1
-        if is_haploid_mode_(varargin{1})
-            haploid_mode = normalize_haploid_mode_(varargin{1});
-        else
-            bed_path = parse_bed_path_(varargin{1});
-        end
-    elseif nargin == 2
-        bed_path = parse_bed_path_(varargin{1});
-        haploid_mode = normalize_haploid_mode_(varargin{2});
-    else
-        error('statgen:genotype', ...
-            'GenotypePanel.fetch_genotypes accepts at most bed_path and haploid_mode optional arguments');
-    end
-end
-
-function tf = is_haploid_mode_(value)
-    if isstring(value)
-        tf = isscalar(value) && any(strcmp(char(value), {'raw', 'ploidy_scaled'}));
-    elseif ischar(value)
-        tf = any(strcmp(value, {'raw', 'ploidy_scaled'}));
-    else
-        tf = false;
     end
 end
 
@@ -385,25 +354,6 @@ function n = count_present_(shards)
     end
 end
 
-function bed_path = parse_bed_path_(varargin)
-    if nargin == 0
-        bed_path = [];
-    elseif nargin == 1
-        bed_path = varargin{1};
-    else
-        error('statgen:genotype', ...
-            'GenotypePanel.fetch_genotypes accepts at most one optional bed_path argument');
-    end
-    if isstring(bed_path)
-        if ~isscalar(bed_path)
-            error('statgen:genotype', 'GenotypePanel.fetch_genotypes: bed_path must be a string scalar');
-        end
-        bed_path = char(bed_path);
-    elseif ~isempty(bed_path) && ~ischar(bed_path)
-        error('statgen:genotype', 'GenotypePanel.fetch_genotypes: bed_path must be a character vector');
-    end
-end
-
 function indices0 = normalize_snp_indices_(snp_indices, num_snp)
     if isempty(snp_indices)
         indices0 = zeros(0, 1);
@@ -436,47 +386,6 @@ function addressed = addressed_shards_(obj, indices0)
             a.local_indices0 = indices0(cols) - offset.start0;
             addressed{end + 1, 1} = a; %#ok<AGROW>
         end
-    end
-end
-
-function bed_paths = resolve_bed_paths_(obj, addressed, bed_path)
-    bed_paths = cell(numel(addressed), 1);
-    if isempty(bed_path)
-        for i = 1:numel(addressed)
-            bed_paths{i} = obj.shards{addressed{i}.shard_index}.bed_path;
-        end
-        return
-    end
-
-    if ~isempty(strfind(bed_path, '@'))
-        if strcmp(obj.source_layout, 'non_sharded')
-            error('statgen:genotype', ...
-                'GenotypePanel.fetch_genotypes: @ override incompatible with non-sharded panel metadata');
-        end
-        for i = 1:numel(addressed)
-            shard = obj.shards{addressed{i}.shard_index};
-            bed_paths{i} = strrep(bed_path, '@', shard.label);
-        end
-        return
-    end
-
-    if strcmp(obj.source_layout, 'sharded') && ~isempty(addressed)
-        source_num_snp = zeros(numel(addressed), 1);
-        source_num_sample = zeros(numel(addressed), 1);
-        for i = 1:numel(addressed)
-            shard = obj.shards{addressed{i}.shard_index};
-            source_num_snp(i) = shard.source_num_snp;
-            source_num_sample(i) = shard.source_num_sample;
-        end
-        if numel(unique(source_num_snp)) ~= 1 || numel(unique(source_num_sample)) ~= 1
-            error('statgen:genotype', ...
-                ['GenotypePanel.fetch_genotypes: flat bed_path override requires equal ' ...
-                 'source_num_snp and source_num_sample across addressed shards']);
-        end
-    end
-
-    for i = 1:numel(addressed)
-        bed_paths{i} = bed_path;
     end
 end
 

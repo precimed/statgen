@@ -442,29 +442,6 @@ class GenotypePanel:
                 addressed.append((shard, cols, snp_indices[cols] - start))
         return addressed
 
-    def _resolve_bed_paths(self, addressed, bed_path) -> dict[str, Path]:
-        if bed_path is None:
-            return {shard.label: shard.bed_path for shard, _, _ in addressed}
-
-        override = str(bed_path)
-        if "@" in override:
-            if self._source_layout == "non_sharded":
-                raise ValueError(
-                    "GenotypePanel.fetch_genotypes: @ override incompatible with non-sharded panel metadata"
-                )
-            return {shard.label: Path(override.replace("@", shard.label)) for shard, _, _ in addressed}
-
-        if self._source_layout == "sharded" and addressed:
-            source_num_snp = {shard.source_num_snp for shard, _, _ in addressed}
-            source_num_sample = {shard.source_num_sample for shard, _, _ in addressed}
-            if len(source_num_snp) != 1 or len(source_num_sample) != 1:
-                raise ValueError(
-                    "GenotypePanel.fetch_genotypes: flat bed_path override requires equal "
-                    "source_num_snp and source_num_sample across addressed shards"
-                )
-        flat = Path(override)
-        return {shard.label: flat for shard, _, _ in addressed}
-
     def _validate_requested_present(self, addressed) -> None:
         start_by_label = {str(o["shard_label"]): int(o["start0"]) for o in self._shard_offsets}
         for shard, _cols, local_indices in addressed:
@@ -477,18 +454,17 @@ class GenotypePanel:
                     f"{panel_index} in shard {shard.label!r} is not present in the genotype source"
                 )
 
-    def fetch_genotypes_int8(self, snp_indices, bed_path=None):
+    def fetch_genotypes_int8(self, snp_indices):
         indices = _normalize_snp_indices(snp_indices, self._num_snp)
         out = np.full((self.num_sample, indices.size), _BED_MISSING_INT8, dtype=np.int8)
         if indices.size == 0:
             return out
 
         addressed = self._addressed_shards(indices)
-        bed_paths = self._resolve_bed_paths(addressed, bed_path)
         self._validate_requested_present(addressed)
 
         for shard, cols, local_indices in addressed:
-            effective_bed = bed_paths[shard.label]
+            effective_bed = shard.bed_path
             _validate_bed(effective_bed, shard.source_num_sample, shard.source_num_snp)
             source_rows = shard.source_row0[local_indices]
             source_geno = _read_bed_rows_int8(
@@ -505,9 +481,9 @@ class GenotypePanel:
                 out[np.ix_(panel_rows, cols)] = source_geno[source_subject_rows, :]
         return out
 
-    def fetch_genotypes(self, snp_indices, bed_path=None, haploid_mode="raw"):
+    def fetch_genotypes(self, snp_indices, haploid_mode="raw"):
         mode = _normalize_haploid_mode(haploid_mode)
-        geno_int8 = self.fetch_genotypes_int8(snp_indices, bed_path=bed_path)
+        geno_int8 = self.fetch_genotypes_int8(snp_indices)
         geno = geno_int8.astype(np.float64)
         geno[geno_int8 == _BED_MISSING_INT8] = np.nan
         if mode == "ploidy_scaled":
@@ -868,7 +844,34 @@ def _validate_cache_meta(meta: dict, data) -> None:
             raise ValueError(f"Invalid genotype cache: bed_file_size mismatch for shard {labels[i]!r}")
 
 
-def load_genotype_cache(path, shards=None) -> GenotypePanel:
+def _resolve_bed_paths(source_layout, labels, stored_paths, source_num_snp, source_num_sample, bed_path):
+    if bed_path is None:
+        return {label: Path(path) for label, path in zip(labels, stored_paths)}
+
+    override = str(bed_path)
+    if "@" in override:
+        if source_layout == "non_sharded":
+            raise ValueError(
+                "load_genotype_cache: @ override incompatible with non-sharded panel metadata"
+            )
+        return {label: Path(override.replace("@", label)) for label in labels}
+
+    if source_layout == "sharded" and labels:
+        if len(set(source_num_snp)) != 1 or len(set(source_num_sample)) != 1:
+            raise ValueError(
+                "load_genotype_cache: flat bed_path override requires equal "
+                "source_num_snp and source_num_sample across selected shards"
+            )
+    flat = Path(override)
+    return {label: flat for label in labels}
+
+
+def load_genotype_cache(path, shards=None, bed_path=None) -> GenotypePanel:
+    """Load cached metadata, optionally replacing BED paths for selected shards.
+
+    Missing or incorrectly sized stored BED files emit a warning; an invalid
+    override raises an error. BED headers are checked when genotypes are read.
+    """
     with np.load(path, allow_pickle=False) as data:
         meta = _load_cache_meta(data)
         _validate_cache_meta(meta, data)
@@ -876,6 +879,25 @@ def load_genotype_cache(path, shards=None) -> GenotypePanel:
         selected = validate_requested_shards(shards, labels, "load_genotype_cache")
         label_to_index = {label: i for i, label in enumerate(labels)}
 
+        indices = [label_to_index[label] for label in selected]
+        selected_paths = _resolve_bed_paths(
+            meta["source_layout"], selected, [meta["bed_paths"][i] for i in indices],
+            [meta["source_num_snp"][i] for i in indices],
+            [meta["source_num_sample"][i] for i in indices], bed_path,
+        )
+        bad = []
+        for label, i in zip(selected, indices):
+            bed = selected_paths[label]
+            try:
+                if not bed.is_file() or bed.stat().st_size != int(meta["bed_file_sizes"][i]):
+                    bad.append(str(bed))
+            except OSError:
+                bad.append(str(bed))
+        if bad:
+            message = "Missing or incorrectly sized BED files: " + ", ".join(dict.fromkeys(bad))
+            if bed_path is not None:
+                raise ValueError(message)
+            warnings.warn(message, UserWarning, stacklevel=2)
         swap_flags = (data["is_allele_swapped"] if meta["schema"] == _CACHE_SCHEMA
                       else np.zeros(data["is_present"].size, dtype=bool))
         shard_objs = []
@@ -886,7 +908,7 @@ def load_genotype_cache(path, shards=None) -> GenotypePanel:
             shard_objs.append(
                 GenotypeShard(
                     label=label,
-                    bed_path=meta["bed_paths"][i],
+                    bed_path=selected_paths[label],
                     bed_file_size=int(meta["bed_file_sizes"][i]),
                     source_num_snp=int(meta["source_num_snp"][i]),
                     source_num_sample=int(meta["source_num_sample"][i]),
