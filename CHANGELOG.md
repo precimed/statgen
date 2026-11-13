@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-13
+
 ### Changed
-- **Breaking API change:** BED path overrides now belong to
+- BED path overrides now belong to
   `load_genotype_cache(..., bed_path=...)`, not genotype fetch calls. Loading
   warns about missing or incorrectly sized stored BED paths and rejects invalid
   override paths; fetch still requires valid BED files. Fixes

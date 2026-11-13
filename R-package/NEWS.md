@@ -1,3 +1,7 @@
+# statgen 0.4.3
+
+- BED path overrides now belong to `load_genotype_cache(..., bed_path=...)`, not genotype fetch calls.
+
 # statgen 0.4.2
 
 * `load_sumstats()` and `load_genotype()` accept `match_by = "id"` to match SNVs other than A/T and C/G by case-sensitive marker ID and alleles instead of position, including strand complements. Sumstats ignore coordinates; genotypes match within the corresponding chromosome. See `?allele_matching` for ID eligibility and duplicate handling.
